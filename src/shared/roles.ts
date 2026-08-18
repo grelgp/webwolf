@@ -14,9 +14,26 @@
 
 import { CENTER_CARD_COUNT, MAX_PLAYERS } from "./constants.js";
 
-export type RoleId = "werewolf" | "villager" | "seer" | "robber" | "troublemaker";
+export type RoleId =
+  | "werewolf"
+  | "minion"
+  | "mason"
+  | "seer"
+  | "robber"
+  | "troublemaker"
+  | "drunk"
+  | "insomniac"
+  | "hunter"
+  | "villager"
+  | "tanner";
 
-export type Team = "village" | "werewolf";
+/**
+ * Who a card wins with.
+ *
+ * The Tanner is a team of one: they win by dying, and take the win away from
+ * everyone else when they do. See `src/server/game/resolution.ts`.
+ */
+export type Team = "village" | "werewolf" | "tanner";
 
 /**
  * One card position on the table. Night actions target these rather than
@@ -55,7 +72,12 @@ export interface SelectionGroup {
  * depending on the table. Currently only the lone-werewolf rule needs it.
  */
 export interface SelectionContext {
-  /** How many players hold this same role tonight (including the actor). */
+  /**
+   * How many players were *dealt* this same role tonight, including the actor.
+   *
+   * Note this is not the size of the list of players shown to them: the Minion
+   * is shown the werewolves, and is still alone in holding the Minion card.
+   */
   holderCount: number;
 }
 
@@ -66,18 +88,23 @@ export interface RoleDefinition {
   maxCopies: number;
   /**
    * Position in the narrator's wake order, lower wakes first. `null` means the
-   * role never wakes (Villager) and therefore gets no night step.
+   * role never wakes (Villager, Hunter, Tanner) and gets no night step.
    *
-   * Values follow the official order and are spaced by 10 so future roles
-   * (Doppelganger 5, Minion 15, Masons 18, Drunk 45, Insomniac 50...) slot in
-   * without renumbering anything.
+   * Values follow the official order and are spaced so a role can be slotted
+   * in without renumbering anything: Werewolf 10, Minion 15, Masons 18, Seer
+   * 20, Robber 30, Troublemaker 40, Drunk 45, Insomniac 50. The gap at 5 is
+   * where the Doppelganger goes.
    */
   wakeOrder: number | null;
   /**
-   * When true, everyone holding this role is shown to the others at the start
-   * of the step (Werewolves recognising each other; later, the Masons).
+   * Whose cards are turned face up for this role at the start of its step, or
+   * `null` for a role that recognises nobody.
+   *
+   * Usually the role's own id - werewolves recognise each other, and so do the
+   * Masons. It is a role id rather than a boolean because recognition is not
+   * always mutual: the Minion sees the werewolves, and they never see them.
    */
-  seesFellows: boolean;
+  sees: RoleId | null;
   /** What this role may click during its step. Empty array = nothing to do. */
   selection: (context: SelectionContext) => SelectionGroup[];
 }
@@ -91,11 +118,35 @@ export const ROLES: Record<RoleId, RoleDefinition> = {
     team: "werewolf",
     maxCopies: 2,
     wakeOrder: 10,
-    seesFellows: true,
+    sees: "werewolf",
     selection: ({ holderCount }) =>
       // A lone werewolf has nobody to recognise, so the rules let them peek at
       // one center card instead. With two or more wolves there is no choice.
       holderCount === 1 ? [{ id: "peek", source: "center", count: 1, excludeSelf: false }] : [],
+  },
+
+  /**
+   * Works for the wolves and is shown who they are, without being seen back.
+   * Not a werewolf card though: killing the Minion does not save the village.
+   * See `isWerewolfCard` below.
+   */
+  minion: {
+    id: "minion",
+    team: "werewolf",
+    maxCopies: 1,
+    wakeOrder: 15,
+    sees: "werewolf",
+    selection: () => [],
+  },
+
+  /** The two Masons recognise each other, exactly as the werewolves do. */
+  mason: {
+    id: "mason",
+    team: "village",
+    maxCopies: 2,
+    wakeOrder: 18,
+    sees: "mason",
+    selection: () => [],
   },
 
   seer: {
@@ -103,7 +154,7 @@ export const ROLES: Record<RoleId, RoleDefinition> = {
     team: "village",
     maxCopies: 1,
     wakeOrder: 20,
-    seesFellows: false,
+    sees: null,
     selection: () => [
       { id: "player", source: "players", count: 1, excludeSelf: true },
       { id: "center", source: "center", count: 2, excludeSelf: false },
@@ -115,7 +166,7 @@ export const ROLES: Record<RoleId, RoleDefinition> = {
     team: "village",
     maxCopies: 1,
     wakeOrder: 30,
-    seesFellows: false,
+    sees: null,
     selection: () => [{ id: "steal", source: "players", count: 1, excludeSelf: true }],
   },
 
@@ -124,8 +175,39 @@ export const ROLES: Record<RoleId, RoleDefinition> = {
     team: "village",
     maxCopies: 1,
     wakeOrder: 40,
-    seesFellows: false,
+    sees: null,
     selection: () => [{ id: "swap", source: "players", count: 2, excludeSelf: true }],
+  },
+
+  drunk: {
+    id: "drunk",
+    team: "village",
+    maxCopies: 1,
+    wakeOrder: 45,
+    sees: null,
+    selection: () => [{ id: "swap", source: "center", count: 1, excludeSelf: false }],
+  },
+
+  /** Wakes last, by design: what they see is the table as it finally stands. */
+  insomniac: {
+    id: "insomniac",
+    team: "village",
+    maxCopies: 1,
+    wakeOrder: 50,
+    sees: null,
+    // Nothing to pick - the reveal fires when the step opens. See
+    // `TURN_START_HANDLERS` in `src/server/game/roleHandlers.ts`.
+    selection: () => [],
+  },
+
+  /** Never wakes; their whole rule is in the vote. See `resolution.ts`. */
+  hunter: {
+    id: "hunter",
+    team: "village",
+    maxCopies: 1,
+    wakeOrder: null,
+    sees: null,
+    selection: () => [],
   },
 
   villager: {
@@ -133,13 +215,47 @@ export const ROLES: Record<RoleId, RoleDefinition> = {
     team: "village",
     maxCopies: 3,
     wakeOrder: null,
-    seesFellows: false,
+    sees: null,
+    selection: () => [],
+  },
+
+  /** A team of one, who wins by being lynched. Never wakes. */
+  tanner: {
+    id: "tanner",
+    team: "tanner",
+    maxCopies: 1,
+    wakeOrder: null,
+    sees: null,
     selection: () => [],
   },
 };
 
 /** Deck-builder display order (also the lobby row order in the UI). */
-export const ROLE_ORDER: RoleId[] = ["werewolf", "seer", "robber", "troublemaker", "villager"];
+export const ROLE_ORDER: RoleId[] = [
+  "werewolf",
+  "minion",
+  "mason",
+  "seer",
+  "robber",
+  "troublemaker",
+  "drunk",
+  "insomniac",
+  "hunter",
+  "villager",
+  "tanner",
+];
+
+/**
+ * True for cards that count as an actual werewolf when the round is judged.
+ *
+ * Deliberately not the same test as `team === "werewolf"`. The Minion wins
+ * *with* the wolves but is not one: killing them does not save the village,
+ * and a table whose only wolf-team card is the Minion counts as having no
+ * werewolf in it at all.
+ */
+export function isWerewolfCard(role: RoleId): boolean {
+  return ROLES[role].team === "werewolf" && role !== "minion";
+}
 
 export function isRoleId(value: unknown): value is RoleId {
   return typeof value === "string" && value in ROLES;

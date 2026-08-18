@@ -13,14 +13,18 @@
 
 import assert from "node:assert/strict";
 
-import { ROLES, wakeOrderForDeck } from "../dist/shared/roles.js";
-import { MAX_SEATS_PER_DEVICE } from "../dist/shared/constants.js";
+import { ROLES, maxSupportedPlayers, wakeOrderForDeck } from "../dist/shared/roles.js";
+import { MAX_SEATS_PER_DEVICE, MIN_PLAYERS } from "../dist/shared/constants.js";
 import { Room } from "../dist/server/room/Room.js";
 import { buildClientState } from "../dist/server/net/views.js";
 import { suggestDeck, validateDeck } from "../dist/shared/deck.js";
 import { createNightState, getTurnState, readSlot } from "../dist/server/game/nightState.js";
-import { ROLE_HANDLERS, validateSelection } from "../dist/server/game/roleHandlers.js";
-import { countVotes, decideOutcome } from "../dist/server/game/resolution.js";
+import {
+  ROLE_HANDLERS,
+  TURN_START_HANDLERS,
+  validateSelection,
+} from "../dist/server/game/roleHandlers.js";
+import { applyHunterShots, countVotes, decideOutcome } from "../dist/server/game/resolution.js";
 
 let passed = 0;
 let failed = 0;
@@ -164,6 +168,101 @@ test("A Troublemaker swap after the Robber moves the stolen card again", () => {
   assert.equal(state.playerCards.get(P.d), "werewolf", "an innocent is now the wolf");
 });
 
+test("Soûlard takes a center card and looks at neither", () => {
+  const state = night(
+    { [P.a]: "drunk", [P.b]: "seer", [P.c]: "werewolf", [P.d]: "villager" },
+    ["werewolf", "villager", "robber"],
+  );
+
+  const turn = act(state, "drunk", P.a, "swap", [center(0)]);
+
+  assert.equal(state.playerCards.get(P.a), "werewolf", "they are a wolf now, and do not know");
+  assert.equal(state.center[0], "drunk", "their own card went to the middle");
+  assert.equal(turn.revealed.length, 0, "the whole point is that they see nothing");
+  assert.equal(turn.swapped.length, 2, "both slots are flagged as moved");
+});
+
+test("Insomniaque sees the card in front of them at the end of the night", () => {
+  // Wakes last, so what they see is the table as it finally stands.
+  assert.ok(ROLES.insomniac.wakeOrder > ROLES.robber.wakeOrder);
+  assert.ok(ROLES.insomniac.wakeOrder > ROLES.drunk.wakeOrder);
+
+  const state = night(
+    { [P.a]: "insomniac", [P.b]: "robber", [P.c]: "werewolf", [P.d]: "villager" },
+    ["villager", "villager", "seer"],
+  );
+
+  act(state, "robber", P.b, "steal", [player(P.a)]);
+
+  const turn = getTurnState(state, P.a);
+  TURN_START_HANDLERS.insomniac({ night: state, actorId: P.a, fellows: [], turn });
+
+  assert.equal(turn.revealed.length, 1);
+  assert.equal(turn.revealed[0].role, "robber", "they were robbed, and they find out");
+  assert.equal(ROLES.insomniac.selection({ holderCount: 1 }).length, 0, "nothing to click");
+});
+
+test("Nobody with an empty selection can smuggle an action through", () => {
+  // The passive roles have no groups at all, so every submission is illegal:
+  // there is no group id that could match.
+  for (const role of ["insomniac", "mason", "minion", "hunter", "tanner", "villager"]) {
+    const groups = ROLES[role].selection({ holderCount: 1 });
+    assert.equal(groups.length, 0, `${role} offers no choice`);
+    assert.equal(
+      validateSelection(role, groups, "swap", [player(P.b)], P.a),
+      "unknown_group",
+      `${role} cannot be made to act`,
+    );
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+console.log("\n== Recognition ==");
+
+/** A room with a hand-built night, so who holds what is not left to chance. */
+function roomWithNight(deal) {
+  const room = emptyRoom();
+  const ids = deal.map((_, index) => room.join(`P${index}`, `device-${index}`).player.id);
+  const dealt = new Map(ids.map((id, index) => [id, deal[index]]));
+  room.night = createNightState(dealt, ["villager", "villager", "villager"], []);
+  return { room, ids };
+}
+
+test("Werewolves and Masons recognise their own kind", () => {
+  const { room, ids } = roomWithNight(["werewolf", "werewolf", "mason", "mason", "seer"]);
+  const [w1, w2, m1, m2, seer] = ids;
+
+  assert.deepEqual(room.fellowsOf(w1), [w2]);
+  assert.deepEqual(room.fellowsOf(m1), [m2]);
+  assert.deepEqual(room.fellowsOf(m2), [m1]);
+  assert.deepEqual(room.fellowsOf(seer), [], "the Seer recognises nobody");
+  assert.equal(room.holderCountOf("werewolf"), 2, "a pack, so no center peek");
+  room.dispose();
+});
+
+test("The Sbire sees the wolves; the wolves never see the Sbire", () => {
+  const { room, ids } = roomWithNight(["werewolf", "minion", "villager", "seer"]);
+  const [wolf, minion] = ids;
+
+  assert.deepEqual(room.fellowsOf(minion), [wolf], "the Minion is shown the pack");
+  assert.deepEqual(room.fellowsOf(wolf), [], "and stays invisible to it");
+
+  // The lone wolf keeps their center peek: the Minion is not a second wolf,
+  // however many faces the Minion's own turn shows.
+  assert.equal(room.holderCountOf("werewolf"), 1);
+  assert.equal(ROLES.werewolf.selection({ holderCount: 1 }).length, 1);
+  room.dispose();
+});
+
+test("A lone Mason and a Sbire with no wolves are shown an empty table", () => {
+  const { room, ids } = roomWithNight(["mason", "minion", "villager", "seer"]);
+  const [mason, minion] = ids;
+
+  assert.deepEqual(room.fellowsOf(mason), [], "the other Mason card is in the center");
+  assert.deepEqual(room.fellowsOf(minion), [], "every wolf card is in the center");
+  room.dispose();
+});
+
 /* -------------------------------------------------------------------------- */
 console.log("\n== Selection validation ==");
 
@@ -211,6 +310,38 @@ test("Every role in the deck is called, including center-only ones", () => {
   assert.ok(!order.includes("villager"), "the Villager never wakes");
 });
 
+test("A full box wakes in the printed order", () => {
+  const order = wakeOrderForDeck([
+    "villager",
+    "tanner",
+    "insomniac",
+    "drunk",
+    "troublemaker",
+    "robber",
+    "seer",
+    "mason",
+    "mason",
+    "minion",
+    "werewolf",
+    "hunter",
+  ]);
+
+  assert.deepEqual(order, [
+    "werewolf",
+    "minion",
+    "mason",
+    "seer",
+    "robber",
+    "troublemaker",
+    "drunk",
+    "insomniac",
+  ]);
+  assert.equal(new Set(order).size, order.length, "two Mason cards are still one step");
+  for (const sleeper of ["villager", "hunter", "tanner"]) {
+    assert.ok(!order.includes(sleeper), `the ${sleeper} never wakes`);
+  }
+});
+
 /* -------------------------------------------------------------------------- */
 console.log("\n== Deck rules ==");
 
@@ -227,6 +358,19 @@ test("Decks must hold exactly players + 3 cards", () => {
     "too_many_copies",
     "only two Werewolf cards exist",
   );
+});
+
+test("Every table size the build seats gets a playable suggestion", () => {
+  for (let players = MIN_PLAYERS; players <= maxSupportedPlayers(); players += 1) {
+    const deck = suggestDeck(players);
+    const validation = validateDeck(deck, players);
+    assert.equal(validation.ok, true, `${players} players: ${validation.reason}`);
+
+    // A single Mason card would give its holder a partner who is always in the
+    // center, which is not a hand anyone should be dealt by default.
+    const masons = deck.filter((card) => card === "mason").length;
+    assert.notEqual(masons, 1, `${players} players got a lone Mason`);
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -377,6 +521,77 @@ test("With no wolf at the table, killing anyone means nobody wins", () => {
 test("A wolf that survives because the vote spared everyone still wins", () => {
   const roles = finalRoles({ [P.a]: "werewolf", [P.b]: "seer", [P.c]: "villager" });
   assert.equal(decideOutcome(roles, []), "werewolf");
+});
+
+test("The Tanneur wins by dying, and takes the wolves' win with them", () => {
+  const roles = finalRoles({ [P.a]: "tanner", [P.b]: "werewolf", [P.c]: "villager" });
+  assert.equal(decideOutcome(roles, [P.a]), "tanner", "the surviving wolf wins nothing");
+});
+
+test("A wolf falling with the Tanneur shares the win with the village", () => {
+  const roles = finalRoles({ [P.a]: "tanner", [P.b]: "werewolf", [P.c]: "villager" });
+  assert.equal(decideOutcome(roles, [P.a, P.b]), "tanner_village");
+});
+
+test("A Tanneur who survives is just another villager", () => {
+  const roles = finalRoles({ [P.a]: "tanner", [P.b]: "werewolf", [P.c]: "villager" });
+  assert.equal(decideOutcome(roles, [P.c]), "werewolf", "an innocent died, the wolf lived");
+  assert.equal(decideOutcome(roles, [P.b]), "village");
+});
+
+test("Killing the Sbire does not save the village", () => {
+  // The Minion is on the werewolf team without being a werewolf card.
+  const roles = finalRoles({ [P.a]: "minion", [P.b]: "werewolf", [P.c]: "villager" });
+  assert.equal(decideOutcome(roles, [P.a]), "werewolf");
+  assert.equal(decideOutcome(roles, [P.b]), "village", "only a real wolf counts");
+});
+
+test("With every wolf in the center, the Sbire wins if anyone else dies", () => {
+  const roles = finalRoles({ [P.a]: "minion", [P.b]: "seer", [P.c]: "villager" });
+  assert.equal(decideOutcome(roles, [P.c]), "werewolf", "an innocent fell for nothing");
+  assert.equal(decideOutcome(roles, [P.a]), "village", "lynch the Minion and all is well");
+  assert.equal(decideOutcome(roles, []), "village", "sparing everyone still wins");
+});
+
+/* -------------------------------------------------------------------------- */
+console.log("\n== The Hunter ==");
+
+test("A lynched Chasseur takes their own vote's target with them", () => {
+  const votes = new Map([
+    [P.a, P.b],
+    [P.b, P.a],
+    [P.c, P.a],
+  ]);
+  const roles = finalRoles({ [P.a]: "hunter", [P.b]: "werewolf", [P.c]: "villager" });
+
+  const shot = applyHunterShots([P.a], votes, roles);
+  assert.deepEqual(shot, [P.b], "the Hunter voted for B, so B goes down too");
+  assert.equal(
+    decideOutcome(roles, [P.a, ...shot]),
+    "village",
+    "the parting shot hit the wolf and won the round",
+  );
+});
+
+test("A Chasseur who survives shoots nobody", () => {
+  const votes = new Map([[P.a, P.b]]);
+  const roles = finalRoles({ [P.a]: "hunter", [P.b]: "werewolf", [P.c]: "villager" });
+  assert.deepEqual(applyHunterShots([P.c], votes, roles), [], "only a dead Hunter fires");
+  assert.deepEqual(applyHunterShots([], votes, roles), [], "and nobody died at all here");
+});
+
+test("The shot follows the card held at dawn, not the one dealt", () => {
+  const votes = new Map([[P.a, P.c]]);
+  // A was dealt the Hunter but the Robber took it: B fires, A does not.
+  const roles = finalRoles({ [P.a]: "robber", [P.b]: "hunter", [P.c]: "villager" });
+  assert.deepEqual(applyHunterShots([P.a], votes, roles), [], "A no longer holds the bow");
+});
+
+test("A Chasseur never fires twice at the same corpse", () => {
+  const votes = new Map([[P.a, P.b]]);
+  const roles = finalRoles({ [P.a]: "hunter", [P.b]: "werewolf", [P.c]: "villager" });
+  // A tie killed both already; the shot has nothing left to add.
+  assert.deepEqual(applyHunterShots([P.a, P.b], votes, roles), []);
 });
 
 /* -------------------------------------------------------------------------- */

@@ -21,6 +21,9 @@ export function renderResult(store: Store, actions: Actions): HTMLElement {
 
   const result = state.result;
   const eliminated = new Set(result.eliminated);
+  // Shot by a Hunter rather than elected: without this the row would show a
+  // dead player with no votes against them and no explanation.
+  const hunted = new Set(result.hunted);
 
   return h(
     "section",
@@ -31,6 +34,7 @@ export function renderResult(store: Store, actions: Actions): HTMLElement {
     }),
 
     result.noOneDied && banner(UI.nobodyDied, "info"),
+    result.hunted.length > 0 && banner(UI.huntedNote, "warn"),
 
     h(
       "div",
@@ -62,7 +66,10 @@ export function renderResult(store: Store, actions: Actions): HTMLElement {
             ),
             h("span", { class: "result-row__votes", text: UI.votesReceived(votes) }),
             eliminated.has(player.id) &&
-              h("span", { class: "chip chip--dead", text: UI.eliminatedLabel }),
+              h("span", {
+                class: hunted.has(player.id) ? "chip chip--hunted" : "chip chip--dead",
+                text: hunted.has(player.id) ? UI.huntedLabel : UI.eliminatedLabel,
+              }),
           );
         }),
       ),

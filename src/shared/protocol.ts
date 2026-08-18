@@ -177,8 +177,13 @@ export interface NightTurnView {
   role: RoleId;
   /** Choices still open. Empty once the action is resolved. */
   groups: SelectionGroup[];
-  /** Other holders of the same role, e.g. fellow werewolves. */
+  /** Players turned face up for this one, e.g. fellow werewolves or Masons. */
   fellows: PlayerId[];
+  /**
+   * The card `fellows` are shown as. Usually this player's own role, but not
+   * always: the Minion is shown the werewolves, and is not one.
+   */
+  fellowRole?: RoleId;
   /** Faces shown to this player as a result of their action. */
   revealed: RevealedCard[];
   /** Slots this player caused to change hands, for a "swap done" confirmation. */
@@ -199,7 +204,14 @@ export interface PrivateView {
   vote?: PlayerId;
 }
 
-export type RoundOutcome = "village" | "werewolf" | "nobody";
+/**
+ * Who won.
+ *
+ * `tanner` is the Tanner alone: they got themselves lynched and no werewolf
+ * fell with them, so nobody else wins either. `tanner_village` is the case
+ * where a wolf went down in the same vote and the village shares the win.
+ */
+export type RoundOutcome = "village" | "werewolf" | "tanner" | "tanner_village" | "nobody";
 
 /** Full disclosure, sent to everyone once the round is over. */
 export interface RoundResult {
@@ -214,7 +226,13 @@ export interface RoundResult {
   votes: Record<PlayerId, PlayerId>;
   /** Vote count per player, including players who received none. */
   tally: Record<PlayerId, number>;
+  /** Everyone who died, the Hunter's victims included. */
   eliminated: PlayerId[];
+  /**
+   * The subset of `eliminated` shot by a Hunter rather than elected by the
+   * vote. Present so the reveal can say why a player with no votes is dead.
+   */
+  hunted: PlayerId[];
   /** True when the "everyone got exactly one vote" rule spared the table. */
   noOneDied: boolean;
 }

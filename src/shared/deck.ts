@@ -96,22 +96,48 @@ export function validateDeck(deck: readonly RoleId[], playerCount: number): Deck
 }
 
 /**
+ * Cards a suggested deck reaches for, in order, added one group at a time.
+ *
+ * Grouped rather than flat because some cards only make sense together: the
+ * Masons are a pair, and a deck holding exactly one of them would give its
+ * holder a partner who is always in the center. A group that would overshoot
+ * the target is skipped and the next one tried, so every table size still
+ * lands on a full deck.
+ */
+const DECK_PREFERENCE: readonly (readonly RoleId[])[] = [
+  ["werewolf", "werewolf"],
+  ["seer"],
+  ["robber"],
+  ["troublemaker"],
+  ["villager"],
+  ["villager"],
+  ["villager"],
+  ["mason", "mason"],
+  ["insomniac"],
+  ["drunk"],
+  ["minion"],
+  ["hunter"],
+  ["tanner"],
+];
+
+/**
  * A playable default deck for `playerCount`, used when a room opens and
  * whenever the table size changes under a now-invalid deck.
  *
- * Priority order: two Werewolves, then the three special roles, then
- * Villagers. Returns a short deck if the registered roles cannot fill the
- * table, which `validateDeck` then reports as `wrong_size`.
+ * Priority order: two Werewolves, then the classic specials, then Villagers,
+ * then the rest of the box as the table outgrows them. Returns a short deck if
+ * the registered roles cannot fill the table, which `validateDeck` then
+ * reports as `wrong_size`.
  */
 export function suggestDeck(playerCount: number): RoleId[] {
   const target = requiredDeckSize(playerCount);
-  const preference: RoleId[] = [];
+  const deck: RoleId[] = [];
 
-  for (const roleId of ["werewolf", "seer", "robber", "troublemaker", "villager"] as RoleId[]) {
-    for (let copy = 0; copy < ROLES[roleId].maxCopies; copy += 1) preference.push(roleId);
+  for (const group of DECK_PREFERENCE) {
+    if (deck.length + group.length > target) continue;
+    deck.push(...group);
+    if (deck.length === target) break;
   }
 
-  // `preference` groups copies together, so slicing keeps two wolves first,
-  // then one of each special, then villagers - the standard opening spread.
-  return preference.slice(0, Math.max(0, target));
+  return deck;
 }

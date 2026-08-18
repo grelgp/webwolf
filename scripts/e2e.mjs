@@ -9,8 +9,11 @@
 
 import WebSocket from "ws";
 
+// Read rather than repeated: a hard-coded copy silently rots the day the wire
+// format is bumped, and the only symptom is a reconnect that never resumes.
+import { PROTOCOL_VERSION as PROTOCOL } from "../dist/shared/constants.js";
+
 const URL = process.env.WS_URL ?? "ws://127.0.0.1:3100/ws";
-const PROTOCOL = 2;
 
 let failures = 0;
 function check(condition, label) {
@@ -329,8 +332,16 @@ async function main() {
   await waitAll(seats, (s) => s.phase === "reveal", "reveal");
   const result = host.state.result;
   check(result.tally[idOf("Alice")] === 4, "Alice collected four votes");
-  check(result.eliminated.length === 1 && result.eliminated[0] === idOf("Alice"), "Alice is eliminated");
-  check(["village", "werewolf", "nobody"].includes(result.outcome), `outcome decided (${result.outcome})`);
+  check(result.eliminated.includes(idOf("Alice")), "Alice is eliminated");
+  // Anyone else on that list was shot by a Hunter Alice turned out to be.
+  check(
+    result.eliminated.length === 1 + result.hunted.length,
+    `the vote killed Alice, plus ${result.hunted.length} taken by the Hunter`,
+  );
+  check(
+    ["village", "werewolf", "tanner", "tanner_village", "nobody"].includes(result.outcome),
+    `outcome decided (${result.outcome})`,
+  );
   check(Object.keys(result.finalRoles).length === 5, "final roles revealed for everyone");
   check(result.centerRoles.length === 3, "three center cards revealed");
   check(

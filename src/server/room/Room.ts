@@ -45,8 +45,8 @@ import {
   scriptedRole,
   type NightState,
 } from "../game/nightState.js";
-import { ROLE_HANDLERS, validateSelection } from "../game/roleHandlers.js";
-import { countVotes, decideOutcome } from "../game/resolution.js";
+import { ROLE_HANDLERS, TURN_START_HANDLERS, validateSelection } from "../game/roleHandlers.js";
+import { applyHunterShots, countVotes, decideOutcome } from "../game/resolution.js";
 import { createLogger } from "../util/logger.js";
 import { newPlayerId, newToken } from "../util/random.js";
 
@@ -421,6 +421,19 @@ export class Room {
       return;
     }
 
+    // Roles that act without choosing anything - the Insomniac looking at
+    // their own card - fire here, before the snapshot that opens the step is
+    // sent, so the result is on screen for the whole of it.
+    const onTurnStart = TURN_START_HANDLERS[role];
+    if (onTurnStart) {
+      const seatIds = this.seats.map((player) => player.id);
+      for (const holder of holdersOf(night, role, seatIds)) {
+        const turn = getTurnState(night, holder);
+        onTurnStart({ night, actorId: holder, fellows: [], turn });
+        turn.resolved = true;
+      }
+    }
+
     this.narrate(`wake.${role}`);
     this.enterPhase("night", this.settings.nightStepSeconds * 1000, () => {
       this.narrate(`sleep.${role}`);
@@ -473,7 +486,12 @@ export class Room {
 
     const seatIds = this.seats.map((player) => player.id);
     const { tally, eliminated, noOneDied } = countVotes(this.votes, seatIds);
-    const outcome = decideOutcome(night.playerCards, eliminated);
+
+    // The vote elects the victims; a Hunter among them then takes their own
+    // target down before the round is judged.
+    const hunted = applyHunterShots(eliminated, this.votes, night.playerCards);
+    const dead = [...eliminated, ...hunted];
+    const outcome = decideOutcome(night.playerCards, dead);
 
     this.result = {
       outcome,
@@ -482,7 +500,8 @@ export class Room {
       centerRoles: night.center.slice(),
       votes: Object.fromEntries(this.votes),
       tally,
-      eliminated,
+      eliminated: dead,
+      hunted,
       noOneDied,
     };
 
@@ -536,9 +555,8 @@ export class Room {
     }
     const typedSlots = slots as CardSlot[];
 
-    const seatIds = this.seats.map((player) => player.id);
-    const fellows = holdersOf(night, role, seatIds).filter((id) => id !== playerId);
-    const groups = getRole(role).selection({ holderCount: fellows.length + 1 });
+    const fellows = this.fellowsOf(playerId);
+    const groups = getRole(role).selection({ holderCount: this.holderCountOf(role) });
 
     const problem = validateSelection(role, groups, groupId, typedSlots, playerId);
     if (problem) return fail("invalid_action", `Illegal selection: ${problem}`);
@@ -623,14 +641,38 @@ export class Room {
     return currentRole(this.night) ?? null;
   }
 
-  /** Other players dealt the same role as `playerId`, in seat order. */
+  /**
+   * Players whose cards are turned face up for `playerId` during their own
+   * step, in seat order.
+   *
+   * Usually the other holders of their own role - werewolves and Masons
+   * recognising each other - but not necessarily: the Minion is shown the
+   * werewolves, who are never shown the Minion. Which is which is declared by
+   * `sees` in the role registry.
+   */
   fellowsOf(playerId: PlayerId): PlayerId[] {
     const night = this.night;
     if (!night) return [];
     const role = night.dealt.get(playerId);
-    if (!role || !ROLES[role].seesFellows) return [];
+    if (!role) return [];
+    const seen = ROLES[role].sees;
+    if (!seen) return [];
     const seatIds = this.seats.map((player) => player.id);
-    return holdersOf(night, role, seatIds).filter((id) => id !== playerId);
+    return holdersOf(night, seen, seatIds).filter((id) => id !== playerId);
+  }
+
+  /**
+   * How many seats were dealt `role` tonight.
+   *
+   * Feeds `SelectionContext.holderCount`, which is what tells a lone werewolf
+   * from a pack. Counted from the deal rather than from `fellowsOf`, since the
+   * two only coincide for roles that recognise their own kind.
+   */
+  holderCountOf(role: RoleId): number {
+    const night = this.night;
+    if (!night) return 0;
+    const seatIds = this.seats.map((player) => player.id);
+    return holdersOf(night, role, seatIds).length;
   }
 }
 

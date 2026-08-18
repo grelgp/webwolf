@@ -16,7 +16,7 @@ import { readSlot, swapSlots, uniqueSlots, type NightState, type TurnState } fro
 export interface NightActionContext {
   night: NightState;
   actorId: PlayerId;
-  /** Other players who were dealt the same role. */
+  /** Players turned face up for this actor - see `sees` in the registry. */
   fellows: readonly PlayerId[];
   /** The player's turn record, mutated in place by the handler. */
   turn: TurnState;
@@ -42,9 +42,9 @@ const NOOP: NightHandler = () => {};
 
 export const ROLE_HANDLERS: Record<RoleId, NightHandler> = {
   /**
-   * Werewolves recognise each other automatically (handled by `seesFellows`
-   * when the turn view is built). A lone wolf gets to peek at one center card
-   * instead, which is this handler's only job.
+   * Werewolves recognise each other automatically (handled by `sees` when the
+   * turn view is built). A lone wolf gets to peek at one center card instead,
+   * which is this handler's only job.
    */
   werewolf: (context, _groupId, slots) => {
     const slot = slots[0];
@@ -79,8 +79,58 @@ export const ROLE_HANDLERS: Record<RoleId, NightHandler> = {
     context.turn.swapped.push(first, second);
   },
 
+  /**
+   * Takes a center card in exchange for their own and looks at neither, so
+   * they spend the day genuinely not knowing what they are. Note the absence
+   * of a `reveal()` call: that is the whole role.
+   */
+  drunk: (context, _groupId, slots) => {
+    const target = slots[0];
+    if (!target) return;
+    const self: CardSlot = { kind: "player", playerId: context.actorId };
+    if (!swapSlots(context.night, self, target)) return;
+    context.turn.swapped.push(self, target);
+  },
+
+  /** Recognises the other Mason; nothing to submit. */
+  mason: NOOP,
+
+  /** Shown the werewolves when the step opens; nothing to submit. */
+  minion: NOOP,
+
+  /** Acts when the step opens, not in response to a choice. */
+  insomniac: NOOP,
+
+  /** Sleeps through the night. Their rule is in the vote, not here. */
+  hunter: NOOP,
+
   /** Sleeps through the night. */
   villager: NOOP,
+
+  /** Sleeps through the night, and hopes to be lynched in the morning. */
+  tanner: NOOP,
+};
+
+/**
+ * Effects that fire when a role's step *opens*, rather than in response to a
+ * submitted action.
+ *
+ * A role with an empty `selection` has nothing to click, so its turn would
+ * otherwise never reach a handler. The Insomniac is exactly that: no choice to
+ * make, and still something to learn. `Room.runNightStep` runs these for every
+ * holder of the role being called and marks the turn resolved.
+ */
+export type TurnStartHandler = (context: NightActionContext) => void;
+
+export const TURN_START_HANDLERS: Partial<Record<RoleId, TurnStartHandler>> = {
+  /**
+   * Looks at their own card at the very end of the night - which is why they
+   * wake last. Read from `playerCards`, so a Robber or Troublemaker who moved
+   * it earlier is exactly what makes this worth doing.
+   */
+  insomniac: (context) => {
+    reveal(context, { kind: "player", playerId: context.actorId });
+  },
 };
 
 /* -------------------------------------------------------------------------- */

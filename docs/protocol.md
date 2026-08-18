@@ -3,7 +3,7 @@
 One endpoint: `ws://<host>/ws`. Every frame is JSON with a `t` discriminator. The types in
 `src/shared/protocol.ts` are the authority; this document explains the flows around them.
 
-`PROTOCOL_VERSION` is `2`. The server rejects a `hello` carrying a different number, which
+`PROTOCOL_VERSION` is `3`. The server rejects a `hello` carrying a different number, which
 turns a stale cached page into a clear error instead of a silent desync.
 
 One socket may hold **up to two seats**, so that two people can play from one phone. A seat is
@@ -18,10 +18,10 @@ the seat it acts for.
 Every socket opens with `hello`:
 
 ```jsonc
-{ "t": "hello", "protocol": 2 }                                  // new visitor
-{ "t": "hello", "protocol": 2, "code": "HGHD",
+{ "t": "hello", "protocol": 3 }                                  // new visitor
+{ "t": "hello", "protocol": 3, "code": "HGHD",
   "seats": [ { "playerId": "…", "token": "…" } ] }               // resuming one seat
-{ "t": "hello", "protocol": 2, "code": "HGHD",
+{ "t": "hello", "protocol": 3, "code": "HGHD",
   "seats": [ { "playerId": "…", "token": "…" },
              { "playerId": "…", "token": "…" } ] }               // resuming a shared phone
 ```
@@ -167,7 +167,12 @@ The result comes back in the next snapshot, inside `private.turn`:
 ```
 
 `passive` is true when the role had no choice at all — a pack of two werewolves simply
-recognises each other through `fellows`.
+recognises each other through `fellows`, and the Insomniac is handed a `revealed` card the
+moment their step opens, without ever sending anything.
+
+`fellowRole` accompanies `fellows` and names the card those players are shown as. It is the
+viewer's own role for werewolves and Masons, and `"werewolf"` for the Minion — who sees the
+pack without the pack seeing them.
 
 When the step ends, the whole `private` block stops being sent and the result vanishes from
 every screen at once.

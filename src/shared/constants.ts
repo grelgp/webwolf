@@ -10,7 +10,7 @@
  * The server refuses `hello` frames carrying a different version, which turns
  * a stale cached client into a clear error instead of a silent desync.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Length of the room code players type in to join. */
 export const ROOM_CODE_LENGTH = 4;

@@ -82,7 +82,8 @@ Two of these are worth spelling out.
 
 **`day` hides your own card on purpose.** In the physical game your card is face down in front
 of you and you may not look at it again. Re-showing it would remove the doubt that makes the
-Robber and the Troublemaker interesting, so the server simply stops sending it.
+Robber, the Troublemaker and above all the Drunk interesting, so the server simply stops
+sending it.
 
 **`night` exposes no per-player progress.** `PublicPlayer.ready` exists during `role_reveal`
 and `PublicPlayer.hasVoted` exists during `vote`, but during the night there is no such field
@@ -142,8 +143,9 @@ satisfies exactly one of them:
 | Robber | 1 player, not self |
 | Troublemaker | 2 players, not self |
 | Lone Werewolf | 1 center card |
+| Drunk | 1 center card |
 | Seer | (1 player, not self) **or** (2 center cards) |
-| Werewolf pack | *none* — nothing to choose |
+| Werewolf pack, Masons, Minion, Insomniac | *none* — nothing to choose |
 
 The browser builds its entire grid from that description, accumulates taps, and submits as
 soon as one group is exactly filled. The Seer therefore reads a player in one tap and two
@@ -151,6 +153,12 @@ center cards in two, with no confirm button anywhere.
 
 The server re-validates the selection against the same declaration
 (`validateSelection`); the browser's grid is a convenience, never a check.
+
+An empty list makes the turn *passive*: the view builder marks it resolved before the step
+even opens, and no submission can be made against it. Two things still happen on such a turn.
+Roles with `sees` set are handed the players they recognise — their own kind for the Masons,
+somebody else's for the Minion — and roles listed in `TURN_START_HANDLERS` run an effect as
+the step opens, which is how the Insomniac is shown their own card without clicking anything.
 
 ---
 
@@ -230,8 +238,9 @@ hand the phone back.
 Nothing leaks by doing so:
 
 - the *other* seat is asleep, by the rules of the game, and sees nothing to leak;
-- when both seats do hold the turn it is because the role comes in pairs — two werewolves —
-  which leaves no choice to make, so both are owed the same screen and either may be rendered
+- when both seats do hold the turn it is because the role comes in pairs — two werewolves, or
+  the two Masons — which leaves no choice to make, so both are owed the same screen and either
+  may be rendered
   (`renderNight` still prefers a seat whose turn is unresolved, should a duplicated role ever
   be given a choice);
 - the role being called is public anyway: the narrator says it out loud.
@@ -295,7 +304,7 @@ touch the socket.
 
 | Script | Scope |
 | --- | --- |
-| `scripts/rules.test.mjs` | Night engine, selection validation, vote counting, win conditions — hand-built states, fully deterministic |
+| `scripts/rules.test.mjs` | Night engine, recognition, selection validation, vote counting, the Hunter's shot and the win conditions — hand-built states, fully deterministic |
 | `scripts/e2e.mjs` | A real five-player round over WebSockets — on four devices, one of them shared — plus the redaction invariants and reconnection |
 
 The split matters: the end-to-end run depends on a random deal and can never guarantee that

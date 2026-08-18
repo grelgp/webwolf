@@ -95,9 +95,12 @@ function renderTurn(
 
   const swapped = new Set(turn.swapped.map(slotKey));
 
-  // Fellow role-holders are shown face up: this is how werewolves recognise
-  // each other without anyone opening their eyes.
+  // Players turned face up for this one: how werewolves and Masons recognise
+  // each other without anyone opening their eyes, and how the Minion is shown
+  // the wolves. The card they are shown as is not always the viewer's own,
+  // which is why the server names it.
   const fellows = new Set(turn.fellows);
+  const fellowRole = turn.fellowRole ?? turn.role;
 
   const wantsPlayers =
     turn.groups.some((group) => group.source === "players") ||
@@ -125,7 +128,7 @@ function renderTurn(
       return tile({ label, role: revealed.role, state: "revealed", note: selfNote });
     }
     if (isFellow) {
-      return tile({ label, role: turn.role, state: "revealed", note: UI.fellowNote });
+      return tile({ label, role: fellowRole, state: "revealed", note: UI.fellowNote });
     }
     if (swapped.has(slotKey(slot))) {
       return tile({ label, state: "revealed", note: UI.swappedNote });
@@ -182,23 +185,38 @@ function renderTurn(
   );
 }
 
-/** The instruction line under the role name. */
+/**
+ * The instruction line under the role name.
+ *
+ * The generic prompt assumes the role found what it woke up for. Three cases
+ * do not, and each of them is information the player is entitled to: a lone
+ * werewolf gets the center peek instead, and a Mason or a Minion who sees an
+ * empty table has just learned where those cards are.
+ */
 function turnPrompt(turn: NightTurnView): string {
-  // A lone werewolf has nobody to recognise and is offered the center peek
-  // instead; the generic prompt would be misleading.
   if (turn.role === "werewolf") {
     return turn.passive ? ROLE_NIGHT_PROMPTS.werewolf : UI.nightAlone;
+  }
+  if (turn.fellows.length === 0) {
+    if (turn.role === "mason") return UI.nightMasonAlone;
+    if (turn.role === "minion") return UI.nightMinionAlone;
   }
   return ROLE_NIGHT_PROMPTS[turn.role];
 }
 
-/** What to show once the action is spent, for the rest of the step. */
+/**
+ * What to show once the action is spent, for the rest of the step.
+ *
+ * What was learned comes first, and only then how the turn was spent: the
+ * Insomniac has no choice to make and still has a card to memorise, so
+ * "nothing to do" would be the wrong thing to read.
+ */
 function resolvedMessage(turn: NightTurnView): string {
-  if (turn.passive) return UI.nightNothingToDo;
   if (turn.revealed.length > 0) {
     return turn.role === "robber" ? UI.nightRobbedInto : UI.nightYouSee;
   }
   if (turn.swapped.length > 0) return `${UI.nightSwapDone} ${UI.nightCloseAgain}`;
+  if (turn.passive) return UI.nightNothingToDo;
   return UI.nightSkipped;
 }
 

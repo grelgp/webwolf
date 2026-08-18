@@ -123,14 +123,20 @@ Round settings (timers, deck, narration on/off) are per-room and live in the lob
 | Role | French | Wakes | Action |
 | --- | --- | --- | --- |
 | Werewolf ×2 | Loup-Garou | 1st | See the other wolves; alone, peek one center card |
-| Seer ×1 | Voyante | 2nd | Look at one player's card, **or** two center cards |
-| Robber ×1 | Voleur | 3rd | Swap your card with a player's, then look at your new one |
-| Troublemaker ×1 | Noiseuse | 4th | Swap two other players' cards, blind |
+| Minion ×1 | Sbire | 2nd | See the werewolves, who never see you. Wins with them |
+| Mason ×2 | Franc-Maçon | 3rd | See the other Mason — or learn their card is in the center |
+| Seer ×1 | Voyante | 4th | Look at one player's card, **or** two center cards |
+| Robber ×1 | Voleur | 5th | Swap your card with a player's, then look at your new one |
+| Troublemaker ×1 | Noiseuse | 6th | Swap two other players' cards, blind |
+| Drunk ×1 | Soûlard | 7th | Take a center card in exchange for your own, without looking |
+| Insomniac ×1 | Insomniaque | 8th | Look at your own card, once the night is over |
+| Hunter ×1 | Chasseur | never | If you die, the player you voted for dies with you |
 | Villager ×3 | Villageois | never | — |
+| Tanner ×1 | Tanneur | never | A team of one: you only win by getting yourself lynched |
 
-That is eight cards, so this build seats **3 to 5 players** — on as few as three phones, if
-two of them are shared. Registering more roles raises the ceiling automatically; see
-[docs/adding-a-role.md](docs/adding-a-role.md).
+That is the whole base box — fifteen cards, so this build seats **3 to 10 players**, on as
+few as five phones if they are shared. The ceiling is derived from the registered cards, not
+hard-coded; see [docs/adding-a-role.md](docs/adding-a-role.md).
 
 ---
 

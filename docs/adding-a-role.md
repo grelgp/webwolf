@@ -1,7 +1,8 @@
 # Adding a role
 
 Adding a role touches **three files**, and usually no UI code at all. This guide walks through
-two real examples from the base box: one that needs no new machinery, and one that does.
+three real examples from the base box: one that needed no new machinery, one that needed a new
+hook in the night, and one that never wakes up but changes who wins.
 
 ```
 src/shared/roles.ts              declare it: team, copies, wake order, what may be clicked
@@ -27,10 +28,10 @@ drunk: {
   id: "drunk",
   team: "village",
   maxCopies: 1,
-  // Wake orders are spaced by 10 so new roles slot in without renumbering.
+  // Wake orders are spaced so new roles slot in without renumbering.
   // Official order puts the Drunk after the Troublemaker (40).
   wakeOrder: 45,
-  seesFellows: false,
+  sees: null,
   selection: () => [{ id: "swap", source: "center", count: 1, excludeSelf: false }],
 },
 ```
@@ -42,10 +43,6 @@ Then add `"drunk"` to the `RoleId` union and to `ROLE_ORDER` (which is the lobby
 In `src/server/game/roleHandlers.ts`:
 
 ```ts
-/**
- * Swaps their own card with a center card and looks at neither - the player
- * spends the day genuinely not knowing what they are.
- */
 drunk: (context, _groupId, slots) => {
   const target = slots[0];
   if (!target) return;
@@ -63,8 +60,8 @@ In `src/client/i18n/fr.ts`, add entries to `ROLE_NAMES`, `ROLE_NAMES_PLURAL`,
 
 ```ts
 "wake.drunk": () =>
-  "Sacripant, réveille-toi. Échange ta carte avec une carte du centre, sans la regarder.",
-"sleep.drunk": () => "Sacripant, ferme les yeux.",
+  "Soûlard, réveille-toi. Échange ta carte avec une carte du centre, sans la regarder.",
+"sleep.drunk": () => "Soûlard, ferme les yeux.",
 ```
 
 TypeScript will point at every map you forgot: they are all `Record<RoleId, …>`.
@@ -81,10 +78,8 @@ confirmation, for free.
 
 *"At the end of the night, look at your own card."*
 
-This one is interesting because it needs something the current primitives do not express: an
+This one is interesting because it needs something the selection primitive cannot express: an
 action with **no choice** that still **reveals** something.
-
-### Declaration
 
 ```ts
 insomniac: {
@@ -92,21 +87,15 @@ insomniac: {
   team: "village",
   maxCopies: 1,
   wakeOrder: 50,          // last, by design
-  seesFellows: false,
+  sees: null,
   selection: () => [],    // nothing to pick
 },
 ```
 
 An empty `selection` makes the turn `passive`, and the view builder marks it resolved
-immediately.
-
-### The gap, and how to close it
-
-A passive turn currently reveals nothing, because handlers only run in response to a
-submitted action. The Insomniac needs its effect to fire when the **step opens**.
-
-Add an optional `onTurnStart` to the handler table and call it from `Room.runNightStep` for
-each holder of the role being called:
+immediately. A passive turn never reaches `ROLE_HANDLERS`, because handlers only run in
+response to a submitted action — so the Insomniac's effect fires when the **step opens**
+instead, from `TURN_START_HANDLERS`:
 
 ```ts
 // roleHandlers.ts
@@ -117,26 +106,40 @@ export const TURN_START_HANDLERS: Partial<Record<RoleId, (c: NightActionContext)
 };
 ```
 
-```ts
-// Room.runNightStep, right after the narration cue
-for (const holder of holdersOf(night, role, seatIds)) {
-  const onStart = TURN_START_HANDLERS[role];
-  if (!onStart) continue;
-  const turn = getTurnState(night, holder);
-  onStart({ night, actorId: holder, fellows: [], turn });
-  turn.resolved = true;
-}
+`Room.runNightStep` runs those for every holder of the role being called, before the snapshot
+that opens the step goes out, and marks the turn resolved. The client already renders
+`turn.revealed` on the matching tile, so again there is no UI work.
+
+---
+
+## Example 3 — the Hunter
+
+*"If you are killed, the player you voted for is also killed."*
+
+A role whose whole rule lives in the vote. It never wakes (`wakeOrder: null`), offers no
+selection, and has no night handler worth the name — but it does touch a **fourth** file:
+
+```
+src/server/game/resolution.ts    who dies, and who wins
 ```
 
-The client already renders `turn.revealed` on the matching tile, so again there is no UI work.
+`applyHunterShots` runs between counting the votes and judging the round, and `Room.finishRound`
+appends its victims to `eliminated` before calling `decideOutcome`. Two neighbours of the
+Hunter live in the same file: the **Tanner**, whose death rewrites the outcome outright, and
+the **Minion**, who is on the werewolf team without being a werewolf card — which is why
+`isWerewolfCard()` exists and why `team === "werewolf"` is the wrong test for "a wolf died".
+
+If your role changes *who wins* rather than *what the night does*, that file is where it goes,
+and `RoundOutcome` in `src/shared/protocol.ts` is where a new kind of winner is declared.
 
 ---
 
 ## Checklist
 
 - [ ] `RoleId` union extended
-- [ ] Entry in `ROLES` with team, `maxCopies`, `wakeOrder`, `seesFellows`, `selection`
-- [ ] Added to `ROLE_ORDER`
+- [ ] Entry in `ROLES` with team, `maxCopies`, `wakeOrder`, `sees`, `selection`
+- [ ] Added to `ROLE_ORDER`, and to `DECK_PREFERENCE` in `deck.ts` if the suggested deck
+      should reach for it
 - [ ] Handler in `ROLE_HANDLERS` (or `TURN_START_HANDLERS` for a passive reveal)
 - [ ] French name, plural, tagline, night prompt, emoji
 - [ ] `wake.<id>` and `sleep.<id>` narration lines — **only if `wakeOrder` is not `null`**
@@ -163,6 +166,11 @@ Adding a field to `PublicPlayer` sends it to the entire table.
 describe *what may be clicked*, never *what happens*. Anything touching `NightState` lives in
 `src/server/game/`.
 
-**Roles that see teammates** set `seesFellows: true` (the Masons, like the werewolves). Roles
-that see *another* team's members — the Minion sees the wolves — need a small addition to
-`Room.fellowsOf`, which currently matches on the viewer's own role.
+**Recognition is a role id, not a flag.** `sees` names whose cards are turned face up for this
+role when its step opens. Werewolves and Masons set it to their own id; the Minion sets it to
+`"werewolf"`, and the wolves never learn who the Minion is. The server sends the card those
+players are shown as in `turn.fellowRole`, so the client never has to guess.
+
+**Cards that come in pairs belong together in the suggested deck.** `DECK_PREFERENCE` in
+`src/shared/deck.ts` is a list of *groups* for exactly this reason: a suggestion holding one
+Mason would deal somebody a partner who is always in the center.

@@ -107,12 +107,13 @@ function buildTurn(room: Room, viewerId: PlayerId): NightTurnView | undefined {
   // robbed earlier tonight still wakes for their original role.
   if (night.dealt.get(viewerId) !== role) return undefined;
 
+  const definition = getRole(role);
   const fellows = room.fellowsOf(viewerId);
-  const groups = getRole(role).selection({ holderCount: fellows.length + 1 });
+  const groups = definition.selection({ holderCount: room.holderCountOf(role) });
   const turn = readTurnState(night, viewerId);
   const passive = groups.length === 0;
 
-  return {
+  const view: NightTurnView = {
     role,
     // Once the action is spent the grid closes, leaving only the result on
     // screen for the rest of the step.
@@ -123,6 +124,12 @@ function buildTurn(room: Room, viewerId: PlayerId): NightTurnView | undefined {
     resolved: passive || (turn?.resolved ?? false),
     passive,
   };
+
+  // What card those players are shown as. Their own for werewolves and Masons,
+  // somebody else's for the Minion - so the client never has to guess.
+  if (definition.sees) view.fellowRole = definition.sees;
+
+  return view;
 }
 
 function buildPrivate(room: Room, viewerId: PlayerId): PrivateView | undefined {
