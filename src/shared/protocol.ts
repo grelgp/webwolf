@@ -18,8 +18,8 @@
  *    is nothing to dig out of devtools.
  *
  * 4. Redaction is per *seat*, not per socket. A device shared by two players
- *    receives two independent snapshots and shows one at a time behind a
- *    hand-over gate, so point 3 keeps holding when a phone changes hands.
+ *    receives two independent snapshots and only ever renders one of them, so
+ *    point 3 keeps holding when a phone changes hands.
  */
 
 import type { RoomSettings } from "./constants.js";

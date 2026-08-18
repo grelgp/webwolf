@@ -175,7 +175,7 @@ export const UI = {
   addPlayerConfirm: "Ajouter à la table",
   removeSeat: "Retirer de la table",
   cancel: "Annuler",
-  /** Shared button that ends one player's turn with the screen. */
+  /** Ends one player's turn with the screen and hands the phone back. */
   handoverDone: "Terminé — rendre le téléphone",
 
   // Role reveal -----------------------------------------------------------
@@ -202,9 +202,6 @@ export const UI = {
   swappedNote: "Échangée",
   nightAlone: "Vous êtes le seul loup-garou. Vous pouvez regarder une carte du centre.",
   nightSkip: "Passer",
-  nightGateInstruction:
-    "Ouvrez les yeux chacun votre tour, et seulement quand l'animateur appelle votre rôle.",
-  nightGateButton: (nickname: string) => `${nickname} — consulter`,
   nightSkipped: "Vous avez passé votre tour.",
   nightNothingToDo: "Rien à faire ce tour-ci. Regardez bien, puis refermez les yeux.",
   nightSwapDone: "Échange effectué.",

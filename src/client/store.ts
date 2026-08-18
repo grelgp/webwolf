@@ -203,8 +203,8 @@ export class Store {
    *
    * A change of context (new phase, new night step, new round) drops the
    * in-progress night selection *and* re-locks the phone. The lock matters
-   * most: on a shared device the next step may belong to the other player, and
-   * leaving the screen open would show them a turn that is not theirs.
+   * most on the way out of the night: a shared device left open on one seat
+   * would otherwise put that seat's ballot in front of whoever holds the phone.
    */
   applyServerState(next: ClientState): void {
     const previous = this.state.snapshots[next.youId];

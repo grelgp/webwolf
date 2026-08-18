@@ -1,9 +1,9 @@
 /**
  * The night.
  *
- * Two very different screens share this phase, and which one you get is
- * decided entirely by the server: if your snapshot carries `private.turn`, it
- * is your turn; if it does not, there is nothing on your device to see.
+ * Two screens share this phase, and which one you get is decided entirely by
+ * the server: if a snapshot carries `private.turn`, it is that seat's turn; if
+ * none does, there is nothing on this device to see.
  *
  * The sleeping screen is deliberately almost empty and very dark. Players are
  * meant to have their eyes shut, and the phone is lying face up on the table
@@ -14,10 +14,11 @@
  * accumulate until they satisfy one group, then submit on their own - the Seer
  * reads a player in one tap, two center cards in two.
  *
- * On a phone shared by two players a third screen comes first: a gate offering
- * *both* names, whether or not either has a turn. Going straight to the turn
- * would tell the other player, sitting right there, which role was just
- * called. The gate is also why the store re-locks itself on every step change.
+ * A phone shared by two players needs no hand-over gate here, unlike the
+ * reveal and the vote. Only the called role has its eyes open: the other seat
+ * is either asleep, and so sees nothing to leak, or holds the same role - a
+ * pack of werewolves - and is shown the very same screen anyway. So the turn
+ * is offered straight away, exactly as it is to a lone player.
  */
 
 import { centerIndexes, slotKey, type CardSlot } from "../../../shared/roles.js";
@@ -25,73 +26,23 @@ import type { ClientState, NightTurnView, RevealedCard } from "../../../shared/p
 import type { Actions } from "../../actions.js";
 import { ROLE_NAMES, ROLE_NIGHT_PROMPTS, UI } from "../../i18n/fr.js";
 import type { Store } from "../../store.js";
-import {
-  banner,
-  countdown,
-  ghostButton,
-  handover,
-  header,
-  stage,
-  tile,
-  tileGrid,
-} from "../components.js";
+import { banner, countdown, ghostButton, header, stage, tile, tileGrid } from "../components.js";
 import { h } from "../dom.js";
 
 export function renderNight(store: Store, actions: Actions): HTMLElement {
   const state = store.base;
   if (!state) return h("section", { class: "screen" });
 
-  // One player, one phone: there is nobody to hide the screen from.
-  const seat = store.shared ? store.active : state;
-  if (!seat) return renderGate(store, state);
+  // Whichever seat on this device is awake, if either is. Both can hold the
+  // turn at once - two werewolves sharing a phone - and then they are shown
+  // the same screen anyway, since a pack has no choice to make. The one that
+  // has yet to act still wins, so a future role held in pairs *and* offered a
+  // choice would put the player who can still make it in front of it.
+  const awake = store.seats.filter((candidate) => candidate.private?.turn);
+  const seat = awake.find((candidate) => !candidate.private?.turn?.resolved) ?? awake[0] ?? state;
 
   const turn = seat.private?.turn;
   return turn ? renderTurn(store, actions, seat, turn) : renderSleeping(store, seat);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Shared phone: who is picking it up                                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Both seats get a button, always enabled, whatever the night is doing. An
- * enabled-only-when-it-is-your-turn gate would leak the called role to the
- * player sitting next to you, which is exactly what this screen exists to
- * prevent.
- */
-function renderGate(store: Store, state: ClientState): HTMLElement {
-  const night = state.night;
-
-  return h(
-    "section",
-    { class: "screen screen--night screen--gate" },
-    handover({
-      title: UI.nightTitle,
-      instruction: UI.nightGateInstruction,
-      caution: UI.nightKeepEyesClosed,
-      aside: h(
-        "div",
-        { class: "handover__step" },
-        night &&
-          h("p", {
-            class: "asleep__step",
-            // Public information: the narrator says this role's name out loud.
-            text: UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role]),
-          }),
-        countdown(store),
-      ),
-      seats: store.seats.map((seat) => ({
-        label: UI.nightGateButton(store.playerName(seat.youId)),
-        onOpen: () => store.openSeat(seat.youId),
-      })),
-    }),
-  );
-}
-
-/** Hands a shared phone back to the middle of the table. */
-function doneButton(store: Store): HTMLElement | null {
-  if (!store.shared) return null;
-  return ghostButton(UI.handoverDone, () => store.lockSeats());
 }
 
 /* -------------------------------------------------------------------------- */
@@ -117,7 +68,6 @@ function renderSleeping(store: Store, seat: ClientState): HTMLElement {
           text: UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role]),
         }),
       countdown(store),
-      doneButton(store),
     ),
   );
 }
@@ -214,14 +164,12 @@ function renderTurn(
       turn.resolved && banner(resolvedMessage(turn), "info"),
     ),
 
-    // Nothing left to offer once a solo player has acted; a shared phone still
-    // needs its way back to the middle of the table.
-    (!turn.resolved || store.shared) &&
+    // Nothing left to offer once the action is spent.
+    !turn.resolved &&
       h(
         "div",
         { class: "actions" },
-        turn.resolved ? null : ghostButton(UI.nightSkip, () => actions.skipNight(state.youId)),
-        doneButton(store),
+        ghostButton(UI.nightSkip, () => actions.skipNight(state.youId)),
       ),
   );
 }

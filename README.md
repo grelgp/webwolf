@@ -65,9 +65,13 @@ become a real player of their own — their own card, their own night turn, thei
 happens to share your screen.
 
 Anything private then arrives behind a hand-over screen naming whose turn it is with the
-phone: the card reveal goes round the two of you one after the other, and the night and the
-vote each ask who is picking the device up before showing anything. Nothing is uncovered until
-somebody taps, so a phone lying face up on the table never gives a card away by itself.
+phone: the card reveal goes round the two of you one after the other, and the vote asks who is
+picking the device up before showing a ballot. Nothing is uncovered until somebody taps, so a
+phone lying face up on the table never gives a card away by itself.
+
+The night is the exception, and needs no hand-over: only the role the narrator just called has
+its eyes open, so the phone simply shows that turn straight away — the other of you is either
+asleep or, when you share a role, looking at the very same screen.
 
 Two consequences worth knowing:
 

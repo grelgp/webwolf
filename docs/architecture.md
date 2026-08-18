@@ -187,14 +187,11 @@ store.activeSeatId = <seat>    ← that seat's private view, and only that one
 store.activeSeatId = null
 ```
 
-Three properties make it hold:
+Two properties make it hold:
 
 - **Locked by default, and re-locked automatically.** Any context change (`phase`, `round`,
   `night.step`) resets the lock in `applyServerState`, so the next night step never opens on
   the previous player's screen.
-- **The gate never says who was called.** Both names are offered, always, whatever the night
-  is doing. A gate that only enabled the seat with a turn would announce the called role to
-  the other player as loudly as showing the turn itself.
 - **The reveal runs one player at a time.** The phase opens on a gate rather than on a card —
   for single-player devices too, since a phone lying face up when the round starts should not
   reveal anything on its own. On a shared phone the gate simply comes round twice.
@@ -203,8 +200,28 @@ The one thing the app cannot enforce is the pair themselves: two people sharing 
 always look over each other's shoulder, exactly as they could lean over at a real table. The
 copy asks them not to; the protocol makes sure nothing is revealed unless somebody taps.
 
+### Where the gate is *not* used
+
 `day` needs no gate — nothing there is private — and `reveal` needs none either, since the
 whole table is face up.
+
+**`night` needs none, and deliberately does not have one.** It is the one phase whose secrecy
+the table itself already enforces: everyone but the called role has their eyes shut. So
+`renderNight` picks whichever seat on the device carries `private.turn` and shows that turn
+immediately, exactly as it would for a lone player — no name to tap first, no "terminé" to
+hand the phone back.
+
+Nothing leaks by doing so:
+
+- the *other* seat is asleep, by the rules of the game, and sees nothing to leak;
+- when both seats do hold the turn it is because the role comes in pairs — two werewolves —
+  which leaves no choice to make, so both are owed the same screen and either may be rendered
+  (`renderNight` still prefers a seat whose turn is unresolved, should a duplicated role ever
+  be given a choice);
+- the role being called is public anyway: the narrator says it out loud.
+
+The gate that used to sit here cost a tap per seat per step and told the pair nothing they
+could not hear, so it now covers `role_reveal` and `vote` only.
 
 ---
 

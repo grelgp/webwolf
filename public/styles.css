@@ -893,8 +893,7 @@ button {
   font-size: 0.9rem;
 }
 
-.handover__aside,
-.handover__step {
+.handover__aside {
   display: flex;
   flex-direction: column;
   align-items: center;
