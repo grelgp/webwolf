@@ -148,6 +148,10 @@ export interface TimerView {
   durationMs: number;
 }
 
+/**
+ * The step running right now. Absent during the pause that opens the night,
+ * when no role has been called yet.
+ */
 export interface NightView {
   /** 1-based, for the "step 2 / 4" indicator. */
   step: number;

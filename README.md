@@ -52,9 +52,10 @@ code for them.
 3. The host builds the deck (it must total `players + 3` cards) and starts the round.
 4. Every card starts covered: tap **Voir ma carte** when nobody is looking over your shoulder,
    memorise it, then confirm and close your eyes.
-5. The narrator calls each role. When it is your turn, your phone shows what you may do; tap,
+5. Night falls, and nothing happens for a few seconds: put the phone down and close your eyes.
+6. The narrator then calls each role. When it is your turn, your phone shows what you may do; tap,
    and the result appears immediately. When the turn ends it disappears.
-6. Discuss, vote, and the full table is revealed.
+7. Discuss, vote, and the full table is revealed.
 
 **Play again** keeps the room, the players and the settings.
 

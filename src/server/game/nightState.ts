@@ -41,6 +41,12 @@ export interface NightState {
   readonly script: readonly RoleId[];
   /** Index into `script` of the step currently running. */
   stepIndex: number;
+  /**
+   * True from nightfall until the first role is called. It exists so no turn
+   * is handed out during the pause, without having to teach every caller of
+   * `currentRole` about it.
+   */
+  settling: boolean;
   /** Keyed by `stepIndex:playerId`. */
   turns: Map<string, TurnState>;
 }
@@ -56,6 +62,7 @@ export function createNightState(
     center: center.slice(),
     script,
     stepIndex: 0,
+    settling: false,
     turns: new Map(),
   };
 }
@@ -74,8 +81,22 @@ export function getTurnState(night: NightState, playerId: PlayerId): TurnState {
   return state;
 }
 
-/** The role being called right now, or `undefined` once the night is over. */
+/**
+ * The role being called right now, or `undefined` when nobody is: during the
+ * settling pause that opens the night, and once the script has run out.
+ *
+ * Everything that hands out a turn or accepts a night action goes through
+ * here, so the pause closes all of them at once.
+ */
 export function currentRole(night: NightState): RoleId | undefined {
+  return night.settling ? undefined : night.script[night.stepIndex];
+}
+
+/**
+ * The role at the current step, pause or no pause. Only the scheduler wants
+ * this: it needs to tell "not yet" from "the night is over".
+ */
+export function scriptedRole(night: NightState): RoleId | undefined {
   return night.script[night.stepIndex];
 }
 

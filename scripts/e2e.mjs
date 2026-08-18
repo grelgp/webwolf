@@ -253,6 +253,14 @@ async function main() {
   console.log("\n== Night ==");
   await waitAll(seats, (s) => s.phase === "night", "night");
 
+  // The night opens on a pause so the table can put its phones down: no role
+  // is called and no turn is dealt until it elapses.
+  check(
+    seats.every((seat) => !seat.state.night && !seat.state.private?.turn),
+    "the night opens with nobody called and no turn dealt",
+  );
+  await waitAll(seats, (s) => s.night?.step === 1, "first role called");
+
   const actionsTaken = [];
   const seenSteps = new Set();
   const turnChecks = new Set();

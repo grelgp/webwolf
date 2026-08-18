@@ -7,7 +7,9 @@
  *
  * The sleeping screen is deliberately almost empty and very dark. Players are
  * meant to have their eyes shut, and the phone is lying face up on the table
- * where anyone could glance at it.
+ * where anyone could glance at it. It also covers the few seconds that open
+ * the night, before the first role is called: nobody has a turn yet, so every
+ * device shows it at once.
  *
  * The acting screen is built generically from the role's `SelectionGroup`s, so
  * a new role with a familiar shape of choice needs no code here at all. Taps
@@ -50,6 +52,8 @@ export function renderNight(store: Store, actions: Actions): HTMLElement {
 /* -------------------------------------------------------------------------- */
 
 function renderSleeping(store: Store, seat: ClientState): HTMLElement {
+  // Absent for the first few seconds of the night: nobody has been called yet,
+  // and the table is still putting its phones down.
   const night = seat.night;
 
   return h(
@@ -60,13 +64,17 @@ function renderSleeping(store: Store, seat: ClientState): HTMLElement {
       { class: "asleep" },
       h("span", { class: "asleep__glyph", text: "🌙" }),
       h("h1", { class: "asleep__title", text: UI.nightTitle }),
-      h("p", { class: "asleep__instruction", text: UI.nightKeepEyesClosed }),
-      night &&
-        h("p", {
-          class: "asleep__step",
-          // Public information: the narrator says this role's name out loud.
-          text: UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role]),
-        }),
+      h("p", {
+        class: "asleep__instruction",
+        text: night ? UI.nightKeepEyesClosed : UI.nightSettle,
+      }),
+      h("p", {
+        class: "asleep__step",
+        // Public information: the narrator says this role's name out loud.
+        text: night
+          ? UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role])
+          : UI.nightSettleStep,
+      }),
       countdown(store),
     ),
   );

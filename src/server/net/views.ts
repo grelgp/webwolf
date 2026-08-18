@@ -10,7 +10,8 @@
  *
  *   lobby        nothing private exists yet
  *   role_reveal  each player learns their own dealt card, and nothing else
- *   night        only the player whose dealt card is being called gets a turn
+ *   night        only the player whose dealt card is being called gets a turn,
+ *                and nobody at all during the pause that opens the night
  *   day / vote   nothing - exactly like face-down cards you may not re-check
  *   reveal       everything, to everyone
  *

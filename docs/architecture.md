@@ -92,6 +92,22 @@ at all — "who has already acted" would identify the holder of the role being c
 
 ## The night
 
+### The night opens on a pause
+
+`beginNight` does not call the first role. It sets `night.settling` and starts a
+`NIGHT_SETTLE_SECONDS` timer; only when that expires does `runNightStep` open step 0.
+
+The reveal can end early — the phase ends the moment the last player taps "ready", not when
+its timer runs out — so without the pause the werewolves would be called while half the table
+still has a phone in hand. The pause is also what the narration needs: "la nuit tombe" has to
+finish being spoken before "loups-garous, réveillez-vous" starts.
+
+`currentRole` reports `undefined` while settling, which is the whole mechanism: every path
+that hands out a turn or accepts a night action goes through it, so no turn is dealt and no
+action is accepted during the pause, and `ClientState.night` is omitted, which is what puts
+every device on the sleeping screen. The scheduler alone uses `scriptedRole`, since it must
+tell "not called yet" apart from "the night is over".
+
 ### Every role in the deck is called
 
 The wake order is derived from the **deck**, not from who was dealt what

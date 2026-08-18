@@ -196,6 +196,9 @@ export const UI = {
   // Night -----------------------------------------------------------------
   nightTitle: "La nuit",
   nightKeepEyesClosed: "Gardez les yeux fermés.",
+  /** The pause that opens the night, before the first role is called. */
+  nightSettle: "Posez le téléphone sur la table et fermez les yeux.",
+  nightSettleStep: "Le premier rôle va être appelé.",
   nightStep: (step: number, total: number, role: string) => `Tour ${step}/${total} — ${role}`,
   nightFellows: "Vos complices :",
   fellowNote: "Complice",

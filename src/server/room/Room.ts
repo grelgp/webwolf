@@ -16,6 +16,7 @@ import {
   MAX_SEATS_PER_DEVICE,
   MIN_PLAYERS,
   NICKNAME_MAX_LENGTH,
+  NIGHT_SETTLE_SECONDS,
   NUMERIC_SETTING_KEYS,
   SETTINGS_BOUNDS,
   type RoomSettings,
@@ -41,6 +42,7 @@ import {
   getTurnState,
   holdersOf,
   isValidSlot,
+  scriptedRole,
   type NightState,
 } from "../game/nightState.js";
 import { ROLE_HANDLERS, validateSelection } from "../game/roleHandlers.js";
@@ -380,12 +382,24 @@ export class Room {
     return ok();
   }
 
+  /**
+   * Nightfall, which opens on a pause rather than on the first role.
+   *
+   * The reveal can end early - the moment the last player taps "ready" - so
+   * the others may still have a phone in hand. Nobody is called until the
+   * table has had `NIGHT_SETTLE_SECONDS` to put the screens down, and no turn
+   * is handed out meanwhile.
+   */
   private beginNight(): void {
-    if (!this.night) return;
-    this.night.stepIndex = 0;
-    this.phase = "night";
+    const night = this.night;
+    if (!night) return;
+    night.stepIndex = 0;
+    night.settling = true;
     this.narrate("phase.night");
-    this.runNightStep();
+    this.enterPhase("night", NIGHT_SETTLE_SECONDS * 1000, () => {
+      night.settling = false;
+      this.runNightStep();
+    });
   }
 
   /**
@@ -399,7 +413,9 @@ export class Room {
     const night = this.night;
     if (!night) return;
 
-    const role = currentRole(night);
+    // Not `currentRole`: that one reports nobody during the settling pause,
+    // which here would be read as the end of the night.
+    const role = scriptedRole(night);
     if (!role) {
       this.beginDay();
       return;

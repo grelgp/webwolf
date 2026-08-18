@@ -44,6 +44,17 @@ export const NICKNAME_MAX_LENGTH = 16;
 export const MAX_SEATS_PER_DEVICE = 2;
 
 /**
+ * Pause between the last card being put down and the first role being called.
+ *
+ * The role reveal ends the instant the last player taps "ready", which can be
+ * seconds before the others have looked up from their screens. Calling the
+ * werewolves straight into that would have people opening their eyes on a
+ * table that is still settling. Short enough not to drag, long enough for the
+ * narration to finish and for every phone to go face down.
+ */
+export const NIGHT_SETTLE_SECONDS = 5;
+
+/**
  * Round settings the host can tweak in the lobby. Every duration is in seconds
  * so the lobby UI can present plain steppers.
  */
