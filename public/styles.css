@@ -526,6 +526,11 @@ button {
   opacity: 0.7;
 }
 
+.chip--device {
+  background: rgba(63, 178, 127, 0.18);
+  color: var(--success);
+}
+
 .pill {
   padding: 3px 10px;
   border-radius: 999px;
@@ -843,6 +848,98 @@ button {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* Hand-over gate ---------------------------------------------------------- */
+
+/*
+ * The screen that stands between a phone and somebody's secret. It fills the
+ * viewport on purpose: nothing of the phase behind it should be legible, and
+ * the buttons must be reachable one-handed while the phone changes hands.
+ */
+.screen--gate {
+  justify-content: center;
+}
+
+.handover {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.handover__glyph {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.handover__title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.handover__instruction {
+  max-width: 28ch;
+  font-size: 1.05rem;
+}
+
+.handover__caution {
+  max-width: 30ch;
+  color: var(--warning);
+  font-size: 0.9rem;
+}
+
+.handover__aside,
+.handover__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.handover__seats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 22rem;
+  margin-top: 4px;
+}
+
+.handover__seat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px;
+}
+
+.handover__seat-label {
+  font-weight: 700;
+}
+
+.handover__seat-note {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+/* Per-seat progress on a shared phone, e.g. who has looked at their card. */
+.seat-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.seat-progress__row--done {
+  color: var(--success);
 }
 
 /* Result ------------------------------------------------------------------ */

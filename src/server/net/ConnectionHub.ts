@@ -12,21 +12,30 @@
  * localStorage. A refresh, a dropped tunnel or a locked phone all resolve the
  * same way: the new socket sends `hello` with those credentials and takes the
  * seat back, mid-round if necessary. Sockets are disposable; seats are not.
+ *
+ * Shared devices
+ * --------------
+ * One socket may hold up to `MAX_SEATS_PER_DEVICE` seats, so two people can
+ * play from one phone. Each seat keeps its own credentials, its own redacted
+ * snapshot and its own commands - the session is simply a list of seats rather
+ * than a single one, and every seated frame names the seat it acts for.
  */
 
 import type { RawData, WebSocket } from "ws";
 
-import { PROTOCOL_VERSION } from "../../shared/constants.js";
+import { MAX_SEATS_PER_DEVICE, PROTOCOL_VERSION } from "../../shared/constants.js";
 import type {
   ClientMessage,
   ErrorCode,
   PlayerId,
+  SeatCredentials,
   ServerMessage,
 } from "../../shared/protocol.js";
 import { config } from "../config.js";
 import { createLogger } from "../util/logger.js";
 import { RoomManager, normalizeCode } from "../room/RoomManager.js";
-import type { CommandError, Room } from "../room/Room.js";
+import type { CommandError, Player, Room } from "../room/Room.js";
+import { newToken } from "../util/random.js";
 import { buildClientState } from "./views.js";
 
 const log = createLogger("hub");
@@ -35,12 +44,38 @@ interface Session {
   socket: WebSocket;
   /** Cleared on every pong; a session that misses two beats is terminated. */
   alive: boolean;
+  /**
+   * Identifies the physical device across reconnects, so the room can tell
+   * two players sharing a phone from two players on their own.
+   */
+  deviceId: string;
   roomCode: string | null;
-  playerId: PlayerId | null;
+  /** Seats this device holds, in the order they were taken. */
+  playerIds: PlayerId[];
 }
 
 function seatKey(code: string, playerId: PlayerId): string {
   return `${code}:${playerId}`;
+}
+
+/**
+ * Sifts the seat credentials out of an untrusted `hello`.
+ *
+ * A device may legitimately offer several, so the frame is a list; anything
+ * malformed is dropped rather than rejected, which lets a client with one
+ * stale entry still resume the seats it does have.
+ */
+function readSeatCredentials(raw: unknown): SeatCredentials[] {
+  if (!Array.isArray(raw)) return [];
+  const seats: SeatCredentials[] = [];
+  for (const entry of raw.slice(0, MAX_SEATS_PER_DEVICE)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { playerId, token } = entry as Partial<SeatCredentials>;
+    if (typeof playerId !== "string" || typeof token !== "string") continue;
+    if (seats.some((seat) => seat.playerId === playerId)) continue;
+    seats.push({ playerId, token });
+  }
+  return seats;
 }
 
 export class ConnectionHub {
@@ -76,7 +111,13 @@ export class ConnectionHub {
   /* ---------------------------------------------------------------------- */
 
   handleConnection(socket: WebSocket): void {
-    const session: Session = { socket, alive: true, roomCode: null, playerId: null };
+    const session: Session = {
+      socket,
+      alive: true,
+      deviceId: newToken(),
+      roomCode: null,
+      playerIds: [],
+    };
     this.sessions.set(socket, session);
 
     socket.on("pong", () => {
@@ -93,18 +134,21 @@ export class ConnectionHub {
   private handleClose(session: Session): void {
     this.sessions.delete(session.socket);
 
-    const { roomCode, playerId } = session;
-    if (!roomCode || !playerId) return;
-
-    const key = seatKey(roomCode, playerId);
-    // Only clear the seat if this socket still owns it. A reconnect that has
-    // already taken over must not be unseated by the old socket's close event.
-    if (this.seats.get(key) !== session) return;
-    this.seats.delete(key);
-
+    const { roomCode } = session;
+    if (!roomCode) return;
     const room = this.rooms.get(roomCode);
-    const player = room?.getPlayer(playerId);
-    if (room && player) room.setConnected(player, false);
+
+    for (const playerId of session.playerIds) {
+      const key = seatKey(roomCode, playerId);
+      // Only clear a seat if this socket still owns it. A reconnect that has
+      // already taken over must not be unseated by the old socket's close.
+      if (this.seats.get(key) !== session) continue;
+      this.seats.delete(key);
+
+      const player = room?.getPlayer(playerId);
+      if (room && player) room.setConnected(player, false);
+    }
+    session.playerIds = [];
   }
 
   private pingAll(): void {
@@ -171,8 +215,12 @@ export class ConnectionHub {
         this.handleJoinRoom(session, message.code, message.nickname);
         return;
 
+      case "add_player":
+        this.handleAddPlayer(session, message.nickname);
+        return;
+
       case "leave_room":
-        this.handleLeave(session);
+        this.handleLeave(session, message.seat);
         return;
 
       default:
@@ -195,19 +243,29 @@ export class ConnectionHub {
 
     // No credentials: a fresh visitor. Nothing to restore, the client shows
     // its home screen.
-    if (!message.code || !message.playerId || !message.token) return;
+    const credentials = readSeatCredentials(message.seats);
+    if (!message.code || credentials.length === 0) return;
 
     const room = this.rooms.get(message.code);
-    const player = room?.resume(message.playerId, message.token);
-    if (!room || !player) {
+    const resumed = credentials
+      .map((seat) => room?.resume(seat.playerId, seat.token))
+      .filter((player): player is Player => Boolean(player));
+
+    const [first] = resumed;
+    if (!room || !first) {
       // Stale credentials - the room expired or was reaped. Tell the client so
       // it can clear storage instead of retrying forever.
       this.send(session, { t: "goodbye", reason: "room_not_found" });
       return;
     }
 
-    this.bind(session, room, player.id);
-    this.send(session, { t: "welcome", playerId: player.id, token: player.token, code: room.code });
+    // Adopt the seats' own device id rather than the one minted for this
+    // socket, so a refresh keeps two shared seats recognised as one phone.
+    session.deviceId = first.deviceId;
+    session.roomCode = room.code;
+    for (const player of resumed) this.claimSeat(session, room, player.id);
+
+    this.sendWelcome(session, room);
     // Always broadcast explicitly here: if the server had not yet noticed the
     // old socket was dead, `resume` sees the seat as already connected and
     // emits no change of its own, leaving the new tab with a blank screen.
@@ -216,20 +274,16 @@ export class ConnectionHub {
 
   private handleCreateRoom(session: Session, nickname: string): void {
     const room = this.rooms.create();
-    const result = room.join(nickname);
+    const result = room.join(nickname, session.deviceId);
     if ("error" in result) {
       this.rooms.destroy(room.code);
       this.sendCommandError(session, result.error);
       return;
     }
 
-    this.bind(session, room, result.player.id);
-    this.send(session, {
-      t: "welcome",
-      playerId: result.player.id,
-      token: result.player.token,
-      code: room.code,
-    });
+    this.unbind(session);
+    this.claimSeat(session, room, result.player.id);
+    this.sendWelcome(session, room);
     room.setConnected(result.player, true);
     this.broadcast(room);
   }
@@ -241,48 +295,100 @@ export class ConnectionHub {
       return;
     }
 
-    const result = room.join(nickname);
+    const result = room.join(nickname, session.deviceId);
     if ("error" in result) {
       this.sendCommandError(session, result.error);
       return;
     }
 
-    this.bind(session, room, result.player.id);
-    this.send(session, {
-      t: "welcome",
-      playerId: result.player.id,
-      token: result.player.token,
-      code: room.code,
-    });
+    this.unbind(session);
+    this.claimSeat(session, room, result.player.id);
+    this.sendWelcome(session, room);
     room.setConnected(result.player, true);
     this.broadcast(room);
   }
 
-  private handleLeave(session: Session): void {
-    const bound = this.resolve(session);
-    this.unbind(session);
-    this.send(session, { t: "goodbye", reason: "left" });
-    if (!bound) return;
-
-    const { room, playerId } = bound;
-    const player = room.getPlayer(playerId);
-    if (!player) return;
-
-    if (room.inGame) {
-      // Mid-round a seat cannot vanish: its card is part of everyone else's
-      // deduction. The player simply shows as disconnected and may come back.
-      room.setConnected(player, false);
-    } else {
-      room.removePlayer(playerId);
-      if (room.playerCount === 0) this.rooms.destroy(room.code);
+  /**
+   * Seats a second player on a device that already holds one.
+   *
+   * It is an ordinary `join`: the new seat is a full player with its own card,
+   * turn and vote. All that is special is the device it sits on, which is what
+   * makes the client hand the screen over rather than show both at once.
+   */
+  private handleAddPlayer(session: Session, nickname: string): void {
+    const room = this.resolveRoom(session);
+    if (!room) {
+      this.sendError(session, "not_in_room", "You are not in a room.");
+      return;
     }
+
+    const result = room.join(nickname, session.deviceId);
+    if ("error" in result) {
+      this.sendCommandError(session, result.error);
+      return;
+    }
+
+    this.claimSeat(session, room, result.player.id);
+    this.sendWelcome(session, room);
+    room.setConnected(result.player, true);
+    this.broadcast(room);
   }
 
-  /** Every command that requires an occupied seat. */
+  /**
+   * Releases one seat, or the whole device when `seat` is omitted.
+   *
+   * A device that still holds a seat afterwards stays in the room and gets a
+   * fresh `welcome`; one that does not is told the socket is now unbound.
+   */
+  private handleLeave(session: Session, seat?: PlayerId): void {
+    const room = this.resolveRoom(session);
+    if (!room) {
+      this.unbind(session);
+      this.send(session, { t: "goodbye", reason: "left" });
+      return;
+    }
+
+    if (seat !== undefined && !session.playerIds.includes(seat)) {
+      this.sendError(session, "bad_request", "That seat is not on this device.");
+      return;
+    }
+    const leaving = seat === undefined ? [...session.playerIds] : [seat];
+
+    for (const playerId of leaving) {
+      this.releaseSeat(session, room.code, playerId);
+      const player = room.getPlayer(playerId);
+      if (!player) continue;
+
+      if (room.inGame) {
+        // Mid-round a seat cannot vanish: its card is part of everyone else's
+        // deduction. The player simply shows as disconnected and may come back.
+        room.setConnected(player, false);
+      } else {
+        room.removePlayer(playerId);
+      }
+    }
+
+    if (session.playerIds.length > 0) {
+      this.send(session, { t: "goodbye", reason: "left", seat });
+      this.sendWelcome(session, room);
+    } else {
+      session.roomCode = null;
+      this.send(session, { t: "goodbye", reason: "left" });
+    }
+
+    if (room.playerCount === 0) this.rooms.destroy(room.code);
+  }
+
+  /** Every command that acts on behalf of one seat this device holds. */
   private handleSeatedCommand(session: Session, message: ClientMessage): void {
-    const bound = this.resolve(session);
+    if (!("seat" in message) || typeof message.seat !== "string") {
+      this.sendError(session, "bad_request", "Missing seat.");
+      return;
+    }
+
+    const bound = this.resolve(session, message.seat);
     if (!bound) {
-      this.sendError(session, "not_in_room", "You are not in a room.");
+      this.sendError(session, "not_in_room", "That seat is not on this device.");
       return;
     }
     const { room, playerId } = bound;
@@ -337,10 +443,7 @@ export class ConnectionHub {
 
     const victim = this.seats.get(seatKey(room.code, targetId));
     room.removePlayer(targetId);
-    if (victim) {
-      this.send(victim, { t: "goodbye", reason: "kicked" });
-      this.unbind(victim);
-    }
+    if (victim) this.evictSeat(victim, room, targetId, "kicked");
     return null;
   }
 
@@ -348,45 +451,90 @@ export class ConnectionHub {
   /* Session binding                                                        */
   /* ---------------------------------------------------------------------- */
 
-  private bind(session: Session, room: Room, playerId: PlayerId): void {
-    this.unbind(session);
-
+  /**
+   * Attaches one seat to this session, taking it from whichever device held it
+   * before. The newest device always wins, and the old one is told *which*
+   * seat it lost, so a shared phone carries on with the seat it kept.
+   */
+  private claimSeat(session: Session, room: Room, playerId: PlayerId): void {
     const key = seatKey(room.code, playerId);
     const previous = this.seats.get(key);
-    if (previous && previous !== session) {
-      // The seat was open in another tab. The newest device wins, and the old
-      // one is told why it went quiet.
-      this.send(previous, { t: "goodbye", reason: "kicked" });
-      previous.roomCode = null;
-      previous.playerId = null;
-      previous.socket.close();
-    }
+    if (previous && previous !== session) this.evictSeat(previous, room, playerId, "kicked");
 
+    if (!session.playerIds.includes(playerId)) session.playerIds.push(playerId);
     session.roomCode = room.code;
-    session.playerId = playerId;
     this.seats.set(key, session);
   }
 
-  private unbind(session: Session): void {
-    const { roomCode, playerId } = session;
-    if (roomCode && playerId) {
-      const key = seatKey(roomCode, playerId);
-      if (this.seats.get(key) === session) this.seats.delete(key);
+  /**
+   * Takes one seat away from a device and tells it why. A device left with no
+   * seat at all is unbound; one that kept a seat just gets a shorter list.
+   */
+  private evictSeat(
+    session: Session,
+    room: Room,
+    playerId: PlayerId,
+    reason: ErrorCode,
+  ): void {
+    this.releaseSeat(session, room.code, playerId);
+    if (session.playerIds.length > 0) {
+      this.send(session, { t: "goodbye", reason, seat: playerId });
+      this.sendWelcome(session, room);
+      return;
     }
     session.roomCode = null;
-    session.playerId = null;
+    this.send(session, { t: "goodbye", reason });
   }
 
-  private resolve(session: Session): { room: Room; playerId: PlayerId } | null {
-    if (!session.roomCode || !session.playerId) return null;
-    const room = this.rooms.get(session.roomCode);
-    if (!room || !room.getPlayer(session.playerId)) return null;
-    return { room, playerId: session.playerId };
+  /** Detaches one seat from a session without touching the room. */
+  private releaseSeat(session: Session, code: string, playerId: PlayerId): void {
+    const key = seatKey(code, playerId);
+    if (this.seats.get(key) === session) this.seats.delete(key);
+    session.playerIds = session.playerIds.filter((id) => id !== playerId);
+  }
+
+  private unbind(session: Session): void {
+    if (session.roomCode) {
+      for (const playerId of [...session.playerIds]) {
+        this.releaseSeat(session, session.roomCode, playerId);
+      }
+    }
+    session.playerIds = [];
+    session.roomCode = null;
+  }
+
+  /** The room this device is in, or null when it holds no seat. */
+  private resolveRoom(session: Session): Room | null {
+    if (!session.roomCode || session.playerIds.length === 0) return null;
+    return this.rooms.get(session.roomCode) ?? null;
+  }
+
+  /** Resolves a seat this device owns, refusing anybody else's. */
+  private resolve(session: Session, playerId: PlayerId): { room: Room; playerId: PlayerId } | null {
+    const room = this.resolveRoom(session);
+    if (!room) return null;
+    if (!session.playerIds.includes(playerId)) return null;
+    if (!room.getPlayer(playerId)) return null;
+    return { room, playerId };
   }
 
   /* ---------------------------------------------------------------------- */
   /* Outbound                                                               */
   /* ---------------------------------------------------------------------- */
+
+  /**
+   * Tells a device the exact set of seats it now holds. The client mirrors it
+   * into localStorage, so this is the only thing that has to be right for a
+   * refresh to reclaim both halves of a shared phone.
+   */
+  private sendWelcome(session: Session, room: Room): void {
+    const seats: SeatCredentials[] = [];
+    for (const playerId of session.playerIds) {
+      const player = room.getPlayer(playerId);
+      if (player) seats.push({ playerId: player.id, token: player.token });
+    }
+    this.send(session, { t: "welcome", code: room.code, seats });
+  }
 
   /** Sends every connected player of `room` their own redacted snapshot. */
   private broadcast(room: Room): void {

@@ -13,31 +13,93 @@
  * a new role with a familiar shape of choice needs no code here at all. Taps
  * accumulate until they satisfy one group, then submit on their own - the Seer
  * reads a player in one tap, two center cards in two.
+ *
+ * On a phone shared by two players a third screen comes first: a gate offering
+ * *both* names, whether or not either has a turn. Going straight to the turn
+ * would tell the other player, sitting right there, which role was just
+ * called. The gate is also why the store re-locks itself on every step change.
  */
 
 import { centerIndexes, slotKey, type CardSlot } from "../../../shared/roles.js";
-import type { NightTurnView, RevealedCard } from "../../../shared/protocol.js";
+import type { ClientState, NightTurnView, RevealedCard } from "../../../shared/protocol.js";
 import type { Actions } from "../../actions.js";
 import { ROLE_NAMES, ROLE_NIGHT_PROMPTS, UI } from "../../i18n/fr.js";
 import type { Store } from "../../store.js";
-import { banner, countdown, ghostButton, header, stage, tile, tileGrid } from "../components.js";
+import {
+  banner,
+  countdown,
+  ghostButton,
+  handover,
+  header,
+  stage,
+  tile,
+  tileGrid,
+} from "../components.js";
 import { h } from "../dom.js";
 
 export function renderNight(store: Store, actions: Actions): HTMLElement {
-  const state = store.state.server;
+  const state = store.base;
   if (!state) return h("section", { class: "screen" });
 
-  const turn = state.private?.turn;
-  return turn ? renderTurn(store, actions, turn) : renderSleeping(store);
+  // One player, one phone: there is nobody to hide the screen from.
+  const seat = store.shared ? store.active : state;
+  if (!seat) return renderGate(store, state);
+
+  const turn = seat.private?.turn;
+  return turn ? renderTurn(store, actions, seat, turn) : renderSleeping(store, seat);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Shared phone: who is picking it up                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Both seats get a button, always enabled, whatever the night is doing. An
+ * enabled-only-when-it-is-your-turn gate would leak the called role to the
+ * player sitting next to you, which is exactly what this screen exists to
+ * prevent.
+ */
+function renderGate(store: Store, state: ClientState): HTMLElement {
+  const night = state.night;
+
+  return h(
+    "section",
+    { class: "screen screen--night screen--gate" },
+    handover({
+      title: UI.nightTitle,
+      instruction: UI.nightGateInstruction,
+      caution: UI.nightKeepEyesClosed,
+      aside: h(
+        "div",
+        { class: "handover__step" },
+        night &&
+          h("p", {
+            class: "asleep__step",
+            // Public information: the narrator says this role's name out loud.
+            text: UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role]),
+          }),
+        countdown(store),
+      ),
+      seats: store.seats.map((seat) => ({
+        label: UI.nightGateButton(store.playerName(seat.youId)),
+        onOpen: () => store.openSeat(seat.youId),
+      })),
+    }),
+  );
+}
+
+/** Hands a shared phone back to the middle of the table. */
+function doneButton(store: Store): HTMLElement | null {
+  if (!store.shared) return null;
+  return ghostButton(UI.handoverDone, () => store.lockSeats());
 }
 
 /* -------------------------------------------------------------------------- */
 /* Everyone whose role is not being called                                    */
 /* -------------------------------------------------------------------------- */
 
-function renderSleeping(store: Store): HTMLElement {
-  const state = store.state.server;
-  const night = state?.night;
+function renderSleeping(store: Store, seat: ClientState): HTMLElement {
+  const night = seat.night;
 
   return h(
     "section",
@@ -55,6 +117,7 @@ function renderSleeping(store: Store): HTMLElement {
           text: UI.nightStep(night.step, night.stepCount, ROLE_NAMES[night.role]),
         }),
       countdown(store),
+      doneButton(store),
     ),
   );
 }
@@ -63,10 +126,12 @@ function renderSleeping(store: Store): HTMLElement {
 /* The player being called                                                    */
 /* -------------------------------------------------------------------------- */
 
-function renderTurn(store: Store, actions: Actions, turn: NightTurnView): HTMLElement {
-  const state = store.state.server;
-  if (!state) return h("section", { class: "screen" });
-
+function renderTurn(
+  store: Store,
+  actions: Actions,
+  state: ClientState,
+  turn: NightTurnView,
+): HTMLElement {
   const revealedBySlot = new Map<string, RevealedCard>();
   for (const card of turn.revealed) revealedBySlot.set(slotKey(card.slot), card);
 
@@ -112,7 +177,7 @@ function renderTurn(store: Store, actions: Actions, turn: NightTurnView): HTMLEl
         label,
         state: store.isSelected(slot) ? "selected" : "selectable",
         note: selfNote,
-        onClick: () => actions.tapSlot(slot),
+        onClick: () => actions.tapSlot(state.youId, slot),
       });
     }
     return tile({ label, state: "muted", note: selfNote });
@@ -149,9 +214,15 @@ function renderTurn(store: Store, actions: Actions, turn: NightTurnView): HTMLEl
       turn.resolved && banner(resolvedMessage(turn), "info"),
     ),
 
-    turn.resolved
-      ? null
-      : h("div", { class: "actions" }, ghostButton(UI.nightSkip, () => actions.skipNight())),
+    // Nothing left to offer once a solo player has acted; a shared phone still
+    // needs its way back to the middle of the table.
+    (!turn.resolved || store.shared) &&
+      h(
+        "div",
+        { class: "actions" },
+        turn.resolved ? null : ghostButton(UI.nightSkip, () => actions.skipNight(state.youId)),
+        doneButton(store),
+      ),
   );
 }
 

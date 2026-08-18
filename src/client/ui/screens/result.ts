@@ -16,7 +16,7 @@ import { banner, header, primaryButton, tile, tileGrid } from "../components.js"
 import { h } from "../dom.js";
 
 export function renderResult(store: Store, actions: Actions): HTMLElement {
-  const state = store.state.server;
+  const state = store.base;
   if (!state?.result) return h("section", { class: "screen" });
 
   const result = state.result;
@@ -83,7 +83,7 @@ export function renderResult(store: Store, actions: Actions): HTMLElement {
       ),
     ),
 
-    state.isHost
+    store.isHost
       ? h(
           "div",
           { class: "actions" },

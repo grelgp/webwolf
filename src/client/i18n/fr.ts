@@ -160,11 +160,38 @@ export const UI = {
   waitingForHost: "En attente de l'animateur…",
   leaveRoom: "Quitter",
 
+  // Shared device ----------------------------------------------------------
+  deviceTitle: "Cet appareil",
+  deviceHint:
+    "Deux joueurs peuvent partager ce téléphone : chacun a sa carte, son tour et son vote, et l'écran passe de l'un à l'autre.",
+  deviceFull: "Cet appareil accueille déjà deux joueurs.",
+  roomFullHint: "La table est complète.",
+  deviceBadge: (group: number) => `Appareil ${group}`,
+  addPlayer: "Ajouter un 2e joueur",
+  addPlayerTitle: "Deuxième joueur",
+  addPlayerIntro:
+    "Ce joueur partage votre téléphone. Il reçoit sa propre carte et vote de son côté ; vous vous passerez l'écran au bon moment.",
+  addPlayerLabel: "Pseudo du 2e joueur",
+  addPlayerConfirm: "Ajouter à la table",
+  removeSeat: "Retirer de la table",
+  cancel: "Annuler",
+  /** Shared button that ends one player's turn with the screen. */
+  handoverDone: "Terminé — rendre le téléphone",
+
   // Role reveal -----------------------------------------------------------
   revealTitle: "Votre carte",
+  revealTitleFor: (nickname: string) => `Carte de ${nickname}`,
   revealWarning: "Mémorisez-la : vous ne pourrez plus la revoir.",
   revealAck: "C'est mémorisé",
   revealWaiting: (ready: number, total: number) => `${ready} / ${total} prêts`,
+  /** Gate shown before any card is drawn, so nobody uncovers someone else's. */
+  revealGateSolo: "Votre carte est prête.",
+  revealGateShared: (nickname: string) => `Passez le téléphone à ${nickname}.`,
+  revealGateCaution: "Personne d'autre ne doit voir l'écran.",
+  revealGateButtonSolo: "Voir ma carte",
+  revealGateButton: (nickname: string) => `Je suis ${nickname} — voir ma carte`,
+  revealSeatDone: "carte mémorisée",
+  revealSeatWaiting: "n'a pas encore regardé",
 
   // Night -----------------------------------------------------------------
   nightTitle: "La nuit",
@@ -175,6 +202,9 @@ export const UI = {
   swappedNote: "Échangée",
   nightAlone: "Vous êtes le seul loup-garou. Vous pouvez regarder une carte du centre.",
   nightSkip: "Passer",
+  nightGateInstruction:
+    "Ouvrez les yeux chacun votre tour, et seulement quand l'animateur appelle votre rôle.",
+  nightGateButton: (nickname: string) => `${nickname} — consulter`,
   nightSkipped: "Vous avez passé votre tour.",
   nightNothingToDo: "Rien à faire ce tour-ci. Regardez bien, puis refermez les yeux.",
   nightSwapDone: "Échange effectué.",
@@ -196,6 +226,11 @@ export const UI = {
   voteProgress: (voted: number, total: number) => `${voted} / ${total} ont voté`,
   voteYours: (nickname: string) => `Votre vote : ${nickname}`,
   voteChangeable: "Vous pouvez encore changer d'avis.",
+  voteGateInstruction: "Chacun vote de son côté, sans montrer son choix à l'autre.",
+  voteGateButton: (nickname: string) => `${nickname} — voter`,
+  voteSeatDone: "a voté",
+  voteSeatWaiting: "n'a pas encore voté",
+  voteTitleFor: (nickname: string) => `Vote de ${nickname}`,
 
   // Reveal -----------------------------------------------------------------
   revealResultTitle: "Résultat",
@@ -232,6 +267,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   not_host: "Seul l'animateur peut faire ça.",
   not_in_room: "Vous n'êtes plus dans le salon.",
   invalid_deck: "La composition n'est pas jouable.",
+  device_full: "Cet appareil accueille déjà deux joueurs.",
   invalid_action: "Action impossible pour l'instant.",
   kicked: "Vous avez été retiré du salon.",
   internal: "Erreur interne. Réessayez.",

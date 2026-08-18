@@ -15,6 +15,7 @@ import { formatClock, UI } from "../i18n/fr.js";
 import type { Store } from "../store.js";
 import { banner } from "./components.js";
 import { h, mount } from "./dom.js";
+import { renderAddPlayer } from "./screens/addPlayer.js";
 import { renderDay } from "./screens/day.js";
 import { renderHome } from "./screens/home.js";
 import { renderLobby } from "./screens/lobby.js";
@@ -37,7 +38,7 @@ export function createRenderer(root: HTMLElement, store: Store, actions: Actions
   window.setInterval(tick, TICK_MS);
 
   return () => {
-    const state = store.state.server;
+    const state = store.base;
 
     // A dropped connection mid-round is common (a locked phone is enough), so
     // it gets a persistent strip rather than a transient error.
@@ -55,8 +56,12 @@ export function createRenderer(root: HTMLElement, store: Store, actions: Actions
 }
 
 function screenFor(store: Store, actions: Actions): HTMLElement {
-  const state = store.state.server;
+  const state = store.base;
   if (!state) return renderHome(store, actions);
+
+  // Seating a companion takes over the screen, because it is the one place in
+  // a room with a text field and the lobby underneath rebuilds constantly.
+  if (store.state.addingPlayer) return renderAddPlayer(store, actions);
 
   switch (state.phase) {
     case "lobby":

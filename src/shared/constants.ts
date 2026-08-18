@@ -10,7 +10,7 @@
  * The server refuses `hello` frames carrying a different version, which turns
  * a stale cached client into a clear error instead of a silent desync.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Length of the room code players type in to join. */
 export const ROOM_CODE_LENGTH = 4;
@@ -32,6 +32,16 @@ export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 10;
 
 export const NICKNAME_MAX_LENGTH = 16;
+
+/**
+ * Seats one physical device may hold.
+ *
+ * Two people can share a phone: the round then hands the screen from one to
+ * the other behind a confirmation gate, which is what lets a five-player table
+ * run on three devices instead of five. Raising this is a matter of the
+ * hand-over UI staying readable, not of any rule.
+ */
+export const MAX_SEATS_PER_DEVICE = 2;
 
 /**
  * Round settings the host can tweak in the lobby. Every duration is in seconds

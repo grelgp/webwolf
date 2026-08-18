@@ -7,17 +7,25 @@
  * socket retries with a capped exponential backoff, and every successful open
  * replays `hello` with the stored credentials, so the server puts the player
  * back where they were - the UI never has to special-case "was disconnected".
+ *
+ * A device may hold more than one seat, so the stored credentials are a list.
+ * A refresh reclaims every seat on the phone in a single `hello`.
  */
 
 import { PROTOCOL_VERSION } from "../../shared/constants.js";
-import type { ClientMessage, ServerMessage } from "../../shared/protocol.js";
+import type {
+  ClientMessage,
+  PlayerId,
+  SeatCredentials,
+  ServerMessage,
+} from "../../shared/protocol.js";
 
 const STORAGE_KEY = "webwolf.session";
 
 export interface StoredSession {
   code: string;
-  playerId: string;
-  token: string;
+  /** Every seat this device holds, in the order the server listed them. */
+  seats: SeatCredentials[];
 }
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
@@ -47,8 +55,15 @@ export class GameSocket {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Partial<StoredSession>;
-      if (!parsed.code || !parsed.playerId || !parsed.token) return null;
-      return { code: parsed.code, playerId: parsed.playerId, token: parsed.token };
+      if (!parsed.code || !Array.isArray(parsed.seats)) return null;
+
+      // A single malformed entry must not cost the device its other seat, so
+      // the list is filtered rather than rejected outright.
+      const seats = parsed.seats.filter(
+        (seat): seat is SeatCredentials =>
+          typeof seat?.playerId === "string" && typeof seat?.token === "string",
+      );
+      return seats.length > 0 ? { code: parsed.code, seats } : null;
     } catch {
       return null;
     }
@@ -61,6 +76,15 @@ export class GameSocket {
       // Private browsing with storage disabled: the round still works, only
       // reconnecting after a refresh does not.
     }
+  }
+
+  /** Forgets one seat, e.g. after a companion left or was removed. */
+  static dropSeat(playerId: PlayerId): void {
+    const session = GameSocket.loadSession();
+    if (!session) return;
+    const seats = session.seats.filter((seat) => seat.playerId !== playerId);
+    if (seats.length > 0) GameSocket.saveSession({ code: session.code, seats });
+    else GameSocket.clearSession();
   }
 
   static clearSession(): void {
@@ -111,18 +135,12 @@ export class GameSocket {
     });
   }
 
-  /** Announces the protocol version and, if we have one, the seat to restore. */
+  /** Announces the protocol version and, if we have any, the seats to restore. */
   private sayHello(): void {
     const session = GameSocket.loadSession();
     this.send(
       session
-        ? {
-            t: "hello",
-            protocol: PROTOCOL_VERSION,
-            code: session.code,
-            playerId: session.playerId,
-            token: session.token,
-          }
+        ? { t: "hello", protocol: PROTOCOL_VERSION, code: session.code, seats: session.seats }
         : { t: "hello", protocol: PROTOCOL_VERSION },
     );
   }

@@ -22,7 +22,8 @@ Cards available in this build, in the quantities the physical box contains:
 | Troublemaker | 1 |
 | Villager | 3 |
 
-Eight cards total, so this build seats **3 to 5 players**. That ceiling is derived, not
+Eight cards total, so this build seats **3 to 5 players** — spread over as few as three
+phones, since a device can seat two of them. That ceiling is derived, not
 hard-coded — registering more roles raises it automatically
 (see [adding-a-role.md](adding-a-role.md)).
 

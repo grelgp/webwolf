@@ -200,3 +200,65 @@ export function roomCode(code: string): HTMLElement {
     h("strong", { class: "room-code__value", text: code }),
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Hand-over gate                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface HandoverSeat {
+  label: string;
+  /** Small line under the label, e.g. "a voté". */
+  note?: string;
+  onOpen: () => void;
+}
+
+export interface HandoverOptions {
+  title: string;
+  /** Who should be holding the phone, in one sentence. */
+  instruction: string;
+  /** The reason the screen is still covered, e.g. "personne d'autre ne regarde". */
+  caution?: string;
+  /** One button per player allowed to take the screen. */
+  seats: HandoverSeat[];
+  /** Shown between the instruction and the buttons; usually a countdown. */
+  aside?: Child;
+  footer?: Child;
+}
+
+/**
+ * The screen that stands between a phone and somebody's secret.
+ *
+ * Nothing private is rendered until one of these buttons is tapped, which is
+ * what makes two players on one device safe: the phase can change, the night
+ * can move on, and the most that is ever on screen is a name and an
+ * instruction. Every seat gets a button whether or not it has anything to do,
+ * so the gate itself never betrays who was called.
+ */
+export function handover(options: HandoverOptions): HTMLElement {
+  return h(
+    "div",
+    { class: "handover" },
+    h("span", { class: "handover__glyph", text: "🤫" }),
+    h("h1", { class: "handover__title", text: options.title }),
+    h("p", { class: "handover__instruction", text: options.instruction }),
+    options.caution && h("p", { class: "handover__caution", text: options.caution }),
+    options.aside && h("div", { class: "handover__aside" }, options.aside),
+    h(
+      "div",
+      { class: "handover__seats" },
+      options.seats.map((seat) =>
+        h(
+          "button",
+          {
+            class: "btn btn--primary btn--block handover__seat",
+            attrs: { type: "button" },
+            onClick: seat.onOpen,
+          },
+          h("span", { class: "handover__seat-label", text: seat.label }),
+          seat.note && h("span", { class: "handover__seat-note", text: seat.note }),
+        ),
+      ),
+    ),
+    options.footer,
+  );
+}

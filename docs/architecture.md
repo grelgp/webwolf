@@ -10,7 +10,9 @@ So the rule is not "the client hides secrets". The rule is:
 > **A player's device never receives information that player is not entitled to, at the
 > moment they are not entitled to it.**
 
-Every design decision below follows from that sentence.
+Every design decision below follows from that sentence — including the one place where a
+device deliberately holds two players' secrets at once. See [Shared devices](#shared-devices)
+for how that one is squared.
 
 ---
 
@@ -63,6 +65,9 @@ DOM after the phase that revealed it has ended.
 ---
 
 ## What each phase discloses
+
+Snapshots are built per seat, never per socket. A shared device gets one apiece, redacted
+exactly as if the two players were on separate phones.
 
 | Phase | In your snapshot | Notably absent |
 | --- | --- | --- |
@@ -147,15 +152,72 @@ Countdowns therefore survive the full-screen rebuilds described above.
 
 ---
 
+## Shared devices
+
+Two people may play from one phone, which is what lets a five-player table run on three
+devices. The friction it removes is real: nobody has to find, unlock and keep hold of a fifth
+handset for a fifteen-minute round.
+
+**A shared seat is not a special kind of seat.** Each of the two is a full player server-side,
+with its own id, token, dealt card, night turn and vote. The only thing they share is a
+`deviceId`, and the only rules that consult it are these two:
+
+- a device may hold at most `MAX_SEATS_PER_DEVICE` (2) seats;
+- the role reveal lasts `roleRevealSeconds × maxSeatsPerDevice`, because the players on a
+  shared phone look at their cards one after the other rather than at the same time.
+
+Everything else — dealing, wake order, redaction, voting, win conditions — never learns that
+the phone is shared.
+
+### The hand-over gate
+
+Redaction happens per **seat**, so a shared device receives *two* independent snapshots. That
+alone would be a leak: showing one seat's turn puts it in front of the player sitting next to
+them. The client therefore keeps a lock.
+
+```
+store.activeSeatId = null      ← default; nothing private is rendered
+        │
+        │  a player taps their own name
+        ▼
+store.activeSeatId = <seat>    ← that seat's private view, and only that one
+        │
+        │  "terminé", or any change of phase / night step / round
+        ▼
+store.activeSeatId = null
+```
+
+Three properties make it hold:
+
+- **Locked by default, and re-locked automatically.** Any context change (`phase`, `round`,
+  `night.step`) resets the lock in `applyServerState`, so the next night step never opens on
+  the previous player's screen.
+- **The gate never says who was called.** Both names are offered, always, whatever the night
+  is doing. A gate that only enabled the seat with a turn would announce the called role to
+  the other player as loudly as showing the turn itself.
+- **The reveal runs one player at a time.** The phase opens on a gate rather than on a card —
+  for single-player devices too, since a phone lying face up when the round starts should not
+  reveal anything on its own. On a shared phone the gate simply comes round twice.
+
+The one thing the app cannot enforce is the pair themselves: two people sharing a phone can
+always look over each other's shoulder, exactly as they could lean over at a real table. The
+copy asks them not to; the protocol makes sure nothing is revealed unless somebody taps.
+
+`day` needs no gate — nothing there is private — and `reveal` needs none either, since the
+whole table is face up.
+
+---
+
 ## Identity and reconnection
 
 A **seat** is `{ playerId, token }`, generated with `node:crypto` and stored in the browser's
-localStorage. Sockets are disposable; seats are not.
+localStorage. A device stores a *list* of them, so a refresh reclaims both halves of a shared
+phone in one `hello`. Sockets are disposable; seats are not.
 
 - Refresh, dropped tunnel, locked phone → the new socket sends `hello` with those credentials
   and takes the seat back, mid-round if necessary.
 - Opening the room in a second tab moves the seat to the newest device and tells the old one
-  why it went quiet.
+  *which* seat it lost, so a shared phone carries on with the seat it kept.
 - **In the lobby**, leaving removes the seat. **Mid-round it does not** — the player's card is
   part of everyone else's deduction, so they only show as disconnected.
 - If the host is gone longer than `HOST_GRACE_MS`, the narrator role passes to the first
@@ -188,7 +250,8 @@ pure functions of `(store, actions)`.
 
 The one constraint this imposes: **no free-text input inside a re-rendered screen**, because a
 rebuild would steal focus. Hence the lobby uses steppers and toggles, and the only text fields
-live on the home screen, which never re-renders from server state.
+live on screens that stand on their own — the home screen, and the one that names a companion
+before seating them.
 
 `Actions` (`src/client/actions.ts`) is the complete list of things the UI may do. Screens never
 touch the socket.
@@ -200,7 +263,7 @@ touch the socket.
 | Script | Scope |
 | --- | --- |
 | `scripts/rules.test.mjs` | Night engine, selection validation, vote counting, win conditions — hand-built states, fully deterministic |
-| `scripts/e2e.mjs` | A real five-player round over WebSockets, plus the redaction invariants and reconnection |
+| `scripts/e2e.mjs` | A real five-player round over WebSockets — on four devices, one of them shared — plus the redaction invariants and reconnection |
 
 The split matters: the end-to-end run depends on a random deal and can never guarantee that
 the Robber or a lone Werewolf came up, so the rules that are easy to get subtly wrong are

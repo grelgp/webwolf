@@ -7,7 +7,8 @@
  * Robber and the Troublemaker interesting.
  *
  * The tiles are therefore purely a seating chart - useful for pointing at
- * someone by name across a noisy table.
+ * someone by name across a noisy table. Nothing here is private, so a phone
+ * shared by two players needs no hand-over gate: they discuss together.
  */
 
 import type { Actions } from "../../actions.js";
@@ -17,8 +18,10 @@ import { countdown, header, primaryButton, stage, tile, tileGrid } from "../comp
 import { h } from "../dom.js";
 
 export function renderDay(store: Store, actions: Actions): HTMLElement {
-  const state = store.state.server;
+  const state = store.base;
   if (!state) return h("section", { class: "screen" });
+
+  const localSeats = new Set(store.state.seatIds);
 
   return h(
     "section",
@@ -31,13 +34,13 @@ export function renderDay(store: Store, actions: Actions): HTMLElement {
           tile({
             label: player.nickname,
             state: "idle",
-            note: player.id === state.youId ? UI.youBadge : undefined,
+            note: localSeats.has(player.id) ? UI.youBadge : undefined,
           }),
         ),
       ),
     ),
 
-    state.isHost &&
+    store.isHost &&
       h(
         "div",
         { class: "actions" },

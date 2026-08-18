@@ -5,6 +5,18 @@
  * adds the few things the browser owns: connection status, the last error
  * banner, the clock offset used to draw countdowns, and the night selection
  * being assembled before it is sent.
+ *
+ * Seats, and why there can be two
+ * -------------------------------
+ * A device may seat two players sharing one phone. Each seat is a full player
+ * server-side and receives its own redacted snapshot, so this store holds a
+ * snapshot *per seat* rather than one.
+ *
+ * `activeSeatId` is the crux of the whole feature: it names the seat whose
+ * private view is currently unlocked, and it is `null` by default. Nothing
+ * secret reaches the screen until somebody has said, out loud and on purpose,
+ * that the phone is now theirs - and it locks itself again the moment the
+ * context changes underneath it.
  */
 
 import type { ClientState, PlayerId } from "../shared/protocol.js";
@@ -13,8 +25,20 @@ import type { ConnectionStatus } from "./net/socket.js";
 
 export interface AppState {
   status: ConnectionStatus;
-  /** Latest redacted snapshot, or null before we are seated. */
-  server: ClientState | null;
+  /** Seats this device holds, in the order the server lists them. */
+  seatIds: PlayerId[];
+  /** Latest redacted snapshot per seat, keyed by that seat's player id. */
+  snapshots: Record<PlayerId, ClientState>;
+  /** Seat whose private view is unlocked right now; null while locked. */
+  activeSeatId: PlayerId | null;
+  /** True while the "add a second player" form has the screen. */
+  addingPlayer: boolean;
+  /**
+   * Seats that have acknowledged the role reveal on *this* device, before the
+   * server has echoed it back. Without it the gate would briefly re-offer the
+   * card of somebody who has just put the phone down.
+   */
+  acknowledged: PlayerId[];
   /** Transient banner, cleared on the next successful action. */
   error: string | null;
   /**
@@ -37,7 +61,11 @@ export class Store {
 
   state: AppState = {
     status: "connecting",
-    server: null,
+    seatIds: [],
+    snapshots: {},
+    activeSeatId: null,
+    addingPlayer: false,
+    acknowledged: [],
     error: null,
     clockOffset: 0,
     selection: [],
@@ -57,6 +85,102 @@ export class Store {
     this.notify();
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Seats                                                                  */
+  /* ---------------------------------------------------------------------- */
+
+  /** Snapshots for the seats on this device, in seat order. */
+  get seats(): ClientState[] {
+    return this.state.seatIds
+      .map((id) => this.state.snapshots[id])
+      .filter((snapshot): snapshot is ClientState => snapshot !== undefined);
+  }
+
+  /**
+   * Any seat's snapshot, for reading the parts every seat agrees on: phase,
+   * players, deck, settings, timers, and the end-of-round reveal.
+   */
+  get base(): ClientState | null {
+    return this.seats[0] ?? null;
+  }
+
+  /** True when two players are sharing this phone. */
+  get shared(): boolean {
+    return this.state.seatIds.length > 1;
+  }
+
+  snapshotFor(seatId: PlayerId): ClientState | null {
+    return this.state.snapshots[seatId] ?? null;
+  }
+
+  /** The unlocked seat's snapshot, or null while the phone is locked. */
+  get active(): ClientState | null {
+    const { activeSeatId } = this.state;
+    return activeSeatId ? this.snapshotFor(activeSeatId) : null;
+  }
+
+  /** The seat on this device that narrates, if any of them does. */
+  hostSeatId(): PlayerId | null {
+    return this.seats.find((snapshot) => snapshot.isHost)?.youId ?? null;
+  }
+
+  get isHost(): boolean {
+    return this.hostSeatId() !== null;
+  }
+
+  /**
+   * Replaces the list of seats this device holds. Snapshots for seats that
+   * are gone are dropped with it, so nothing they knew survives on screen.
+   */
+  setSeats(seatIds: PlayerId[]): void {
+    const snapshots: Record<PlayerId, ClientState> = {};
+    for (const id of seatIds) {
+      const snapshot = this.state.snapshots[id];
+      if (snapshot) snapshots[id] = snapshot;
+    }
+    const activeSeatId =
+      this.state.activeSeatId && seatIds.includes(this.state.activeSeatId)
+        ? this.state.activeSeatId
+        : null;
+    this.patch({ seatIds, snapshots, activeSeatId });
+  }
+
+  /** Forgets one seat, e.g. a companion who left or was removed. */
+  dropSeat(seatId: PlayerId): void {
+    this.setSeats(this.state.seatIds.filter((id) => id !== seatId));
+  }
+
+  /** Hands the screen to one seat: everything private is shown from now on. */
+  openSeat(seatId: PlayerId): void {
+    this.patch({ activeSeatId: seatId, selection: [] });
+  }
+
+  /** Takes the screen back. Nothing private is rendered while locked. */
+  lockSeats(): void {
+    if (this.state.activeSeatId === null && this.state.selection.length === 0) return;
+    this.patch({ activeSeatId: null, selection: [] });
+  }
+
+  setAddingPlayer(addingPlayer: boolean): void {
+    this.patch({ addingPlayer });
+  }
+
+  /** Records that a seat has seen its card, without waiting for the server. */
+  markAcknowledged(seatId: PlayerId): void {
+    if (this.state.acknowledged.includes(seatId)) return;
+    this.patch({ acknowledged: [...this.state.acknowledged, seatId] });
+  }
+
+  /** True once this seat has confirmed its card, locally or per the server. */
+  hasSeenCard(seatId: PlayerId): boolean {
+    if (this.state.acknowledged.includes(seatId)) return true;
+    return this.base?.players.find((player) => player.id === seatId)?.ready ?? false;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Server state                                                           */
+  /* ---------------------------------------------------------------------- */
+
   setStatus(status: ConnectionStatus): void {
     this.patch({ status });
   }
@@ -75,23 +199,36 @@ export class Store {
   }
 
   /**
-   * Applies a server snapshot.
+   * Applies a server snapshot to the seat it belongs to.
    *
-   * The in-progress night selection is dropped whenever the turn context
-   * changes (new phase, new night step, new round). Without that, a tap left
-   * over from the previous step could be submitted against the next role.
+   * A change of context (new phase, new night step, new round) drops the
+   * in-progress night selection *and* re-locks the phone. The lock matters
+   * most: on a shared device the next step may belong to the other player, and
+   * leaving the screen open would show them a turn that is not theirs.
    */
   applyServerState(next: ClientState): void {
-    const previous = this.state.server;
+    const previous = this.state.snapshots[next.youId];
     const contextChanged =
       !previous ||
       previous.phase !== next.phase ||
       previous.round !== next.round ||
       previous.night?.step !== next.night?.step;
 
+    // A snapshot can arrive before its `welcome`, e.g. when a companion is
+    // seated; keep the seat rather than dropping the frame.
+    const seatIds = this.state.seatIds.includes(next.youId)
+      ? this.state.seatIds
+      : [...this.state.seatIds, next.youId];
+
     this.state = {
       ...this.state,
-      server: next,
+      seatIds,
+      snapshots: { ...this.state.snapshots, [next.youId]: next },
+      activeSeatId: contextChanged ? null : this.state.activeSeatId,
+      // Seating a companion is a lobby-only affair; a round starting under an
+      // open form must not leave it covering the reveal.
+      addingPlayer: next.phase === "lobby" && this.state.addingPlayer,
+      acknowledged: contextChanged ? [] : this.state.acknowledged,
       clockOffset: next.serverNow - Date.now(),
       selection: contextChanged ? [] : this.state.selection,
       error: contextChanged ? null : this.state.error,
@@ -101,7 +238,14 @@ export class Store {
 
   /** Clears everything room-related, e.g. after leaving or being kicked. */
   clearRoom(): void {
-    this.patch({ server: null, selection: [] });
+    this.patch({
+      seatIds: [],
+      snapshots: {},
+      activeSeatId: null,
+      addingPlayer: false,
+      acknowledged: [],
+      selection: [],
+    });
   }
 
   setSelection(selection: CardSlot[]): void {
@@ -115,13 +259,13 @@ export class Store {
 
   /** Milliseconds left on the current phase timer, or null if there is none. */
   remainingMs(): number | null {
-    const timer = this.state.server?.timer;
+    const timer = this.base?.timer;
     if (!timer) return null;
     return Math.max(0, timer.endsAt - (Date.now() + this.state.clockOffset));
   }
 
   playerName(playerId: PlayerId): string {
-    const player = this.state.server?.players.find((candidate) => candidate.id === playerId);
+    const player = this.base?.players.find((candidate) => candidate.id === playerId);
     return player?.nickname ?? "?";
   }
 }

@@ -14,6 +14,11 @@
  *   day / vote   nothing - exactly like face-down cards you may not re-check
  *   reveal       everything, to everyone
  *
+ * A device shared by two players gets one such snapshot per seat, built here
+ * exactly as if the two were on separate phones. Nothing about sharing relaxes
+ * the rules above; the client shows one seat at a time behind a hand-over
+ * gate, and never holds a secret belonging to a seat it is not showing.
+ *
  * Note what is absent from `day`: not even your own card. That is deliberate.
  * In the physical game you may not look at your card again after the night,
  * and half the tension comes from a Robber who is no longer sure what they
@@ -36,7 +41,35 @@ function readTurnState(night: NightState, playerId: PlayerId): TurnState | undef
   return night.turns.get(turnKey(night.stepIndex, playerId));
 }
 
+/**
+ * 1-based marker per player for every device holding more than one seat.
+ *
+ * Not a secret: who is sharing a phone is plain to see around the table. It
+ * exists so the lobby can show the host how the devices are shared out, and
+ * numbering starts from the first shared device in seat order, so it is stable
+ * across snapshots.
+ */
+function deviceGroups(room: Room): Map<PlayerId, number> {
+  const byDevice = new Map<string, PlayerId[]>();
+  for (const player of room.players) {
+    const seats = byDevice.get(player.deviceId);
+    if (seats) seats.push(player.id);
+    else byDevice.set(player.deviceId, [player.id]);
+  }
+
+  const groups = new Map<PlayerId, number>();
+  let index = 0;
+  for (const seats of byDevice.values()) {
+    if (seats.length < 2) continue;
+    index += 1;
+    for (const id of seats) groups.set(id, index);
+  }
+  return groups;
+}
+
 function buildPlayers(room: Room): PublicPlayer[] {
+  const groups = deviceGroups(room);
+
   return room.players.map((player) => {
     const view: PublicPlayer = {
       id: player.id,
@@ -44,6 +77,9 @@ function buildPlayers(room: Room): PublicPlayer[] {
       isHost: room.isHost(player.id),
       connected: player.connected,
     };
+
+    const group = groups.get(player.id);
+    if (group !== undefined) view.deviceGroup = group;
 
     // Progress indicators are scoped to the phase that needs them. During the
     // night we expose none: "who has already acted" would identify the holder

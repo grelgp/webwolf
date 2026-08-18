@@ -5,10 +5,13 @@
  * Everything below is plumbing. The rules live on the server, and the screens
  * are pure functions of the snapshot it sends - which is why a player can
  * refresh mid-round and land exactly where they left off.
+ *
+ * A device may hold two seats. Player commands therefore name the seat they
+ * act for; host commands resolve the one host seat this device happens to own.
  */
 
 import { ROOM_CODE_LENGTH, type RoomSettings } from "../shared/constants.js";
-import type { PlayerId, ServerMessage } from "../shared/protocol.js";
+import type { PlayerId, SeatedMessage, ServerMessage } from "../shared/protocol.js";
 import type { CardSlot, RoleId } from "../shared/roles.js";
 import type { Actions } from "./actions.js";
 import { errorMessage, UI } from "./i18n/fr.js";
@@ -30,6 +33,21 @@ const socket = new GameSocket({
   onStatus: (status: ConnectionStatus) => store.setStatus(status),
 });
 
+/** Sends a command on behalf of one seat this device holds. */
+function sendAs(seat: PlayerId, message: SeatedMessage): void {
+  socket.send({ ...message, seat });
+}
+
+/**
+ * Sends a host-only command from whichever seat on this device is the host.
+ * Silently does nothing otherwise - the UI never offers the control anyway,
+ * and host status can change under a stale render.
+ */
+function sendAsHost(message: SeatedMessage): void {
+  const seat = store.hostSeatId();
+  if (seat) sendAs(seat, message);
+}
+
 const actions: Actions = {
   createRoom(nickname) {
     // Must happen inside the tap handler: browsers only arm speech synthesis
@@ -47,15 +65,23 @@ const actions: Actions = {
     socket.send({ t: "join_room", code, nickname });
   },
 
-  leaveRoom() {
-    socket.send({ t: "leave_room" });
+  addPlayer(nickname) {
+    store.setError(null);
+    store.setAddingPlayer(false);
+    socket.send({ t: "add_player", nickname });
+  },
+
+  leaveRoom(seat) {
+    socket.send(seat ? { t: "leave_room", seat } : { t: "leave_room" });
+    if (seat) return; // The server replies with a fresh seat list.
+
     GameSocket.clearSession();
     resetHomeDraft();
     store.clearRoom();
   },
 
   setDeck(counts: Partial<Record<RoleId, number>>) {
-    socket.send({ t: "set_deck", deck: counts });
+    sendAsHost({ t: "set_deck", deck: counts });
   },
 
   setSettings(patch: Partial<RoomSettings>) {
@@ -63,29 +89,34 @@ const actions: Actions = {
       narrator.setEnabled(patch.narrationEnabled);
       if (patch.narrationEnabled) narrator.unlock();
     }
-    socket.send({ t: "set_settings", settings: patch });
+    sendAsHost({ t: "set_settings", settings: patch });
   },
 
   kickPlayer(playerId: PlayerId) {
-    socket.send({ t: "kick_player", playerId });
+    sendAsHost({ t: "kick_player", playerId });
   },
 
   startGame() {
     narrator.unlock();
-    socket.send({ t: "start_game" });
+    sendAsHost({ t: "start_game" });
   },
 
-  ready() {
-    socket.send({ t: "ready" });
+  ready(seat) {
+    sendAs(seat, { t: "ready" });
+    // Hand the phone back straight away, without waiting for the echo: on a
+    // shared device the next thing on screen must be the gate for the other
+    // player, never this one's card a second time.
+    store.markAcknowledged(seat);
+    store.lockSeats();
   },
 
-  tapSlot(slot: CardSlot) {
-    const turn = store.state.server?.private?.turn;
+  tapSlot(seat, slot: CardSlot) {
+    const turn = store.snapshotFor(seat)?.private?.turn;
     if (!turn || turn.resolved) return;
 
     const result = applyTap(turn, store.state.selection, slot);
     if (result.submit) {
-      socket.send({
+      sendAs(seat, {
         t: "night_action",
         groupId: result.submit.groupId,
         slots: result.submit.slots,
@@ -94,20 +125,20 @@ const actions: Actions = {
     store.setSelection(result.selection);
   },
 
-  skipNight() {
-    socket.send({ t: "night_skip" });
+  skipNight(seat) {
+    sendAs(seat, { t: "night_skip" });
   },
 
   endDiscussion() {
-    socket.send({ t: "end_discussion" });
+    sendAsHost({ t: "end_discussion" });
   },
 
-  castVote(targetId: PlayerId) {
-    socket.send({ t: "cast_vote", targetId });
+  castVote(seat, targetId: PlayerId) {
+    sendAs(seat, { t: "cast_vote", targetId });
   },
 
   playAgain() {
-    socket.send({ t: "play_again" });
+    sendAsHost({ t: "play_again" });
   },
 
   testVoice() {
@@ -122,18 +153,15 @@ store.subscribe(render);
 function handleMessage(message: ServerMessage): void {
   switch (message.t) {
     case "welcome":
-      GameSocket.saveSession({
-        code: message.code,
-        playerId: message.playerId,
-        token: message.token,
-      });
+      GameSocket.saveSession({ code: message.code, seats: message.seats });
+      store.setSeats(message.seats.map((seat) => seat.playerId));
       return;
 
     case "state":
+      store.applyServerState(message.state);
       // Narration is a host-device setting, and the host can change between
       // rounds, so it is re-applied from every snapshot rather than once.
-      narrator.setEnabled(message.state.isHost && message.state.settings.narrationEnabled);
-      store.applyServerState(message.state);
+      narrator.setEnabled(store.isHost && message.state.settings.narrationEnabled);
       return;
 
     case "narrate":
@@ -145,12 +173,17 @@ function handleMessage(message: ServerMessage): void {
       return;
 
     case "goodbye":
-      // The seat is gone: stale credentials, a kick, or a deliberate exit.
-      // Clearing storage stops the client from trying to resume a dead seat.
-      GameSocket.clearSession();
-      narrator.cancel();
-      resetHomeDraft();
-      store.clearRoom();
+      // One seat is gone, or all of them: stale credentials, a kick, a seat
+      // reclaimed by another device, or a deliberate exit.
+      if (message.seat) {
+        GameSocket.dropSeat(message.seat);
+        store.dropSeat(message.seat);
+      } else {
+        GameSocket.clearSession();
+        narrator.cancel();
+        resetHomeDraft();
+        store.clearRoom();
+      }
       if (message.reason !== "left") store.setError(errorMessage(message.reason));
       return;
 

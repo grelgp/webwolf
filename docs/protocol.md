@@ -3,8 +3,13 @@
 One endpoint: `ws://<host>/ws`. Every frame is JSON with a `t` discriminator. The types in
 `src/shared/protocol.ts` are the authority; this document explains the flows around them.
 
-`PROTOCOL_VERSION` is `1`. The server rejects a `hello` carrying a different number, which
+`PROTOCOL_VERSION` is `2`. The server rejects a `hello` carrying a different number, which
 turns a stale cached page into a clear error instead of a silent desync.
+
+One socket may hold **up to two seats**, so that two people can play from one phone. A seat is
+still a full player - own card, own turn, own vote - and every frame below is about seats
+rather than sockets: the server sends one snapshot per seat, and every seated command names
+the seat it acts for.
 
 ---
 
@@ -13,45 +18,63 @@ turns a stale cached page into a clear error instead of a silent desync.
 Every socket opens with `hello`:
 
 ```jsonc
-{ "t": "hello", "protocol": 1 }                                  // new visitor
-{ "t": "hello", "protocol": 1,
-  "code": "HGHD", "playerId": "…", "token": "…" }                // resuming a seat
+{ "t": "hello", "protocol": 2 }                                  // new visitor
+{ "t": "hello", "protocol": 2, "code": "HGHD",
+  "seats": [ { "playerId": "…", "token": "…" } ] }               // resuming one seat
+{ "t": "hello", "protocol": 2, "code": "HGHD",
+  "seats": [ { "playerId": "…", "token": "…" },
+             { "playerId": "…", "token": "…" } ] }               // resuming a shared phone
 ```
 
 | Outcome | Server replies |
 | --- | --- |
 | No credentials | *(nothing)* — the client shows its home screen |
-| Credentials valid | `welcome`, then `state` |
-| Credentials stale | `goodbye { reason: "room_not_found" }` — the client clears storage |
+| At least one seat valid | `welcome`, then one `state` per seat |
+| Every seat stale | `goodbye { reason: "room_not_found" }` — the client clears storage |
 | Wrong version | `error { code: "bad_protocol" }` |
 
-`welcome` carries `{ playerId, token, code }`. The client stores it in localStorage; it is the
-only thing that lets a refreshed browser reclaim its seat.
+`welcome` carries `{ code, seats }`, the complete list of seats this device now holds. The
+client mirrors it into localStorage, so it is re-sent whenever that set changes — a companion
+seated, a seat left, a seat reclaimed by another device — and it is the only thing that lets a
+refreshed browser take both halves of a shared phone back at once.
+
+A device that resumes a seat also adopts that seat's device identity, which is what keeps two
+shared seats recognised as one phone across a refresh.
 
 ---
 
 ## Client → Server
+
+Every message below the line marked **seated** additionally carries `seat: PlayerId`, naming
+which of this device's seats is acting. A frame naming a seat the device does not hold is
+refused with `not_in_room`, so a shared phone can never act for anyone but its own two players
+— and neither can a hand-crafted frame.
 
 | Message | Who | Notes |
 | --- | --- | --- |
 | `hello` | anyone | First frame on every socket |
 | `create_room { nickname }` | anyone | Creates the room and seats you as host |
 | `join_room { code, nickname }` | anyone | Code is case-insensitive |
-| `leave_room` | seated | Removes the seat in the lobby; marks you offline mid-round |
+| `add_player { nickname }` | seated, lobby | Seats a second player on this device |
+| `leave_room { seat? }` | seated | One seat, or the whole device when omitted |
+| `ping` | anyone | Answered with `pong` |
+| — **seated, all carry `seat`** — | | |
 | `set_nickname { nickname }` | seated | Duplicates get a numeric suffix |
 | `set_deck { deck }` | host, lobby | Absolute counts: `{ "werewolf": 2, "seer": 1 }` |
 | `set_settings { settings }` | host, lobby | Partial patch; numbers are clamped to `SETTINGS_BOUNDS` |
 | `kick_player { playerId }` | host, lobby | |
 | `start_game` | host, lobby | Fails with `invalid_deck` if the deck does not fit the table |
-| `ready` | seated | Acknowledges the role reveal; the phase ends early once all have |
+| `ready` | seated | Acknowledges the role reveal; the phase ends early once every seat has |
 | `night_action { groupId, slots }` | acting player | See below |
 | `night_skip` | acting player | Every night action is optional |
 | `end_discussion` | host, day | Ends the discussion timer early |
 | `cast_vote { targetId }` | seated, vote | Changeable until everyone has voted |
 | `play_again` | host, reveal | Keeps players, deck and settings |
-| `ping` | anyone | Answered with `pong` |
 
 Unrecognised or out-of-turn messages produce an `error` frame and change nothing.
+
+`add_player` fails with `device_full` when the phone already holds `MAX_SEATS_PER_DEVICE`
+seats, and with `room_full` when the table itself has no room left.
 
 ---
 
@@ -59,17 +82,17 @@ Unrecognised or out-of-turn messages produce an `error` frame and change nothing
 
 | Message | Sent to | Meaning |
 | --- | --- | --- |
-| `welcome { playerId, token, code }` | one player | Your seat credentials |
-| `state { state }` | each player | A full, individually redacted snapshot |
+| `welcome { code, seats }` | one device | Every seat this device now holds, with credentials |
+| `state { state }` | each **seat** | A full, individually redacted snapshot |
 | `narrate { key, params? }` | **host only** | Speak this line; `key` indexes `src/client/i18n/fr.ts` |
 | `error { code, message }` | one player | `message` is English, for logs; the client shows its own French text keyed by `code` |
-| `goodbye { reason }` | one player | The socket is no longer bound to a seat |
+| `goodbye { reason, seat? }` | one device | A seat is unbound; without `seat`, all of them are |
 | `pong` | one player | |
 
 ### Error codes
 
 `bad_protocol`, `bad_request`, `room_not_found`, `room_full`, `game_in_progress`, `not_host`,
-`not_in_room`, `invalid_deck`, `invalid_action`, `kicked`, `internal`.
+`not_in_room`, `invalid_deck`, `invalid_action`, `device_full`, `kicked`, `internal`.
 
 ---
 
@@ -85,7 +108,7 @@ disclosure table.
   "phase": "night",
   "round": 0,
   "serverNow": 1755511234567,   // for the client's clock offset
-  "youId": "…",
+  "youId": "…",                 // the seat this snapshot is for
   "isHost": false,
   "players": [ { "id": "…", "nickname": "Bruno", "isHost": false, "connected": true } ],
   "settings": { "roleRevealSeconds": 10, "nightStepSeconds": 15, "…": 0 },
@@ -168,7 +191,8 @@ retries when the tab becomes visible again, since a phone waking from sleep ofte
 socket the OS quietly killed.
 
 Opening the same room in a second tab moves the seat to the newest device; the old one gets
-`goodbye { reason: "kicked" }`.
+`goodbye { reason: "kicked", seat }` plus a fresh `welcome` if it still holds another seat, or
+a bare `goodbye { reason: "kicked" }` if that was its last one.
 
 If the host stays offline past `HOST_GRACE_MS`, the narrator role passes to the first
 connected player.

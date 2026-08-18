@@ -14,6 +14,9 @@
 import assert from "node:assert/strict";
 
 import { ROLES, wakeOrderForDeck } from "../dist/shared/roles.js";
+import { MAX_SEATS_PER_DEVICE } from "../dist/shared/constants.js";
+import { Room } from "../dist/server/room/Room.js";
+import { buildClientState } from "../dist/server/net/views.js";
 import { suggestDeck, validateDeck } from "../dist/shared/deck.js";
 import { createNightState, getTurnState, readSlot } from "../dist/server/game/nightState.js";
 import { ROLE_HANDLERS, validateSelection } from "../dist/server/game/roleHandlers.js";
@@ -224,6 +227,74 @@ test("Decks must hold exactly players + 3 cards", () => {
     "too_many_copies",
     "only two Werewolf cards exist",
   );
+});
+
+/* -------------------------------------------------------------------------- */
+console.log("\n== Shared devices ==");
+
+/** A room with no network attached; the callbacks are what the hub provides. */
+function emptyRoom() {
+  return new Room("TEST", { onChange() {}, onNarrate() {} });
+}
+
+test("A device seats two players, and no more", () => {
+  const room = emptyRoom();
+  assert.ok("player" in room.join("Alice", "device-1"));
+  assert.ok("player" in room.join("Zoe", "device-1"));
+
+  const third = room.join("Yann", "device-1");
+  assert.equal(third.error?.code, "device_full", "a phone only holds two players");
+  assert.equal(room.playerCount, 2);
+  assert.equal(room.seatsOnDevice("device-1"), MAX_SEATS_PER_DEVICE);
+
+  // The limit is per device, never per table.
+  assert.ok("player" in room.join("Bruno", "device-2"));
+  assert.equal(room.playerCount, 3);
+  room.dispose();
+});
+
+test("Two seats on one device are two independent players", () => {
+  const room = emptyRoom();
+  const alice = room.join("Alice", "device-1").player;
+  const zoe = room.join("Zoe", "device-1").player;
+
+  assert.notEqual(alice.id, zoe.id, "separate seats");
+  assert.notEqual(alice.token, zoe.token, "separate resume credentials");
+  assert.equal(room.isHost(alice.id), true, "the first seat created the room");
+  assert.equal(room.isHost(zoe.id), false, "sharing a phone does not share the narrator");
+  room.dispose();
+});
+
+test("The reveal lasts as long as the busiest device needs", () => {
+  const room = emptyRoom();
+  const host = room.join("Alice", "device-1").player;
+  room.join("Zoe", "device-1");
+  room.join("Bruno", "device-2");
+  room.join("Chloe", "device-3");
+
+  assert.equal(room.maxSeatsPerDevice(), 2);
+  assert.equal(room.startGame(host.id), null, "the auto-fitted deck is playable");
+  assert.equal(
+    room.deadline.durationMs,
+    room.settings.roleRevealSeconds * 2 * 1000,
+    "players sharing a phone look at their cards one after the other",
+  );
+  room.dispose();
+});
+
+test("Only players sharing a phone are marked as sharing one", () => {
+  const room = emptyRoom();
+  const alice = room.join("Alice", "device-1").player;
+  const zoe = room.join("Zoe", "device-1").player;
+  const bruno = room.join("Bruno", "device-2").player;
+
+  const players = buildClientState(room, bruno.id).players;
+  const groupOf = (id) => players.find((p) => p.id === id).deviceGroup;
+
+  assert.equal(groupOf(alice.id), 1);
+  assert.equal(groupOf(zoe.id), 1, "both halves of a shared phone carry the same marker");
+  assert.equal(groupOf(bruno.id), undefined, "a player on their own carries none");
+  room.dispose();
 });
 
 /* -------------------------------------------------------------------------- */

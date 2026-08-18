@@ -19,6 +19,7 @@ removes all of them:
 | Cards get memorised by position or rotation | There are no physical cards; positions do not exist |
 | People hear each other move, or peek | Nobody moves at night — every action is a tap on your own phone |
 | Wrong player targeted, Robber forgets to check their new card | Targets are picked by name, and results are pushed to you instantly |
+| Somebody has no phone, or a flat battery | Two players can share one device and pass it between them |
 
 The house rules are otherwise unchanged: the deck is always `players + 3` cards, three of
 them stay face down "in the middle", and you may not look at your card again after the night.
@@ -49,12 +50,31 @@ code for them.
 1. Put every phone **face up** on the table.
 2. The host's phone is the **narrator** — leave it in the middle, volume up.
 3. The host builds the deck (it must total `players + 3` cards) and starts the round.
-4. Everyone reads their card, then closes their eyes.
+4. Every card starts covered: tap **Voir ma carte** when nobody is looking over your shoulder,
+   memorise it, then confirm and close your eyes.
 5. The narrator calls each role. When it is your turn, your phone shows what you may do; tap,
    and the result appears immediately. When the turn ends it disappears.
 6. Discuss, vote, and the full table is revealed.
 
 **Play again** keeps the room, the players and the settings.
+
+### Two players, one phone
+
+Short of devices? In the lobby, tap **Ajouter un 2e joueur** and give them a nickname. They
+become a real player of their own — their own card, their own night turn, their own vote — who
+happens to share your screen.
+
+Anything private then arrives behind a hand-over screen naming whose turn it is with the
+phone: the card reveal goes round the two of you one after the other, and the night and the
+vote each ask who is picking the device up before showing anything. Nothing is uncovered until
+somebody taps, so a phone lying face up on the table never gives a card away by itself.
+
+Two consequences worth knowing:
+
+- the **role reveal timer is doubled** on a table with a shared phone, since its two players
+  read their cards in turn rather than at once;
+- the app can gate the screen, but it cannot stop the two of you peeking at each other. Look
+  away when it is not your turn, exactly as you would at a real table.
 
 ---
 
@@ -71,7 +91,8 @@ code for them.
 | `npm run test:e2e` | Drive a real five-player round against a running server |
 
 `npm run test:e2e` needs a server on `ws://127.0.0.1:3100/ws`; start one with
-`PORT=3100 npm start`, or point it elsewhere with `WS_URL=…`.
+`PORT=3100 npm start`, or point it elsewhere with `WS_URL=…`. It plays a five-player round
+across four devices, one of which is shared.
 
 ---
 
@@ -102,8 +123,9 @@ Round settings (timers, deck, narration on/off) are per-room and live in the lob
 | Troublemaker ×1 | Noiseuse | 4th | Swap two other players' cards, blind |
 | Villager ×3 | Villageois | never | — |
 
-That is eight cards, so this build seats **3 to 5 players**. Registering more roles raises
-the ceiling automatically; see [docs/adding-a-role.md](docs/adding-a-role.md).
+That is eight cards, so this build seats **3 to 5 players** — on as few as three phones, if
+two of them are shared. Registering more roles raises the ceiling automatically; see
+[docs/adding-a-role.md](docs/adding-a-role.md).
 
 ---
 
@@ -111,7 +133,7 @@ the ceiling automatically; see [docs/adding-a-role.md](docs/adding-a-role.md).
 
 | Document | Contents |
 | --- | --- |
-| [docs/architecture.md](docs/architecture.md) | How the pieces fit, and the anti-cheat model |
+| [docs/architecture.md](docs/architecture.md) | How the pieces fit, the anti-cheat model, and shared devices |
 | [docs/protocol.md](docs/protocol.md) | Every WebSocket message, and the reconnection flow |
 | [docs/game-rules.md](docs/game-rules.md) | The implemented rules, including the awkward edge cases |
 | [docs/adding-a-role.md](docs/adding-a-role.md) | Step-by-step guide to adding a new role |

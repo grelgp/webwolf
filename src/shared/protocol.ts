@@ -16,6 +16,10 @@
  * 3. Secrets are omitted from the snapshot, never merely flagged. A player who
  *    is not the Seer receives no field describing what the Seer saw, so there
  *    is nothing to dig out of devtools.
+ *
+ * 4. Redaction is per *seat*, not per socket. A device shared by two players
+ *    receives two independent snapshots and shows one at a time behind a
+ *    hand-over gate, so point 3 keeps holding when a phone changes hands.
  */
 
 import type { RoomSettings } from "./constants.js";
@@ -29,12 +33,20 @@ export type Phase = "lobby" | "role_reveal" | "night" | "day" | "vote" | "reveal
 /* Client -> Server                                                           */
 /* -------------------------------------------------------------------------- */
 
-export type ClientMessage =
-  /** First frame on every socket. Carries resume credentials when we have them. */
-  | { t: "hello"; protocol: number; code?: string; playerId?: PlayerId; token?: string }
-  | { t: "create_room"; nickname: string }
-  | { t: "join_room"; code: string; nickname: string }
-  | { t: "leave_room" }
+/** Resume credentials for one seat. A device may hold more than one. */
+export interface SeatCredentials {
+  playerId: PlayerId;
+  token: string;
+}
+
+/**
+ * A command issued on behalf of one seat.
+ *
+ * Since a device can hold two seats, "who is acting" can no longer be implied
+ * by the socket. Every one of these carries `seat`, and the server refuses a
+ * seat the sending device does not own.
+ */
+export type SeatedMessage =
   | { t: "set_nickname"; nickname: string }
   /** Host only. Absolute card counts per role, e.g. `{ werewolf: 2, seer: 1 }`. */
   | { t: "set_deck"; deck: Partial<Record<RoleId, number>> }
@@ -42,7 +54,7 @@ export type ClientMessage =
   | { t: "set_settings"; settings: Partial<RoomSettings> }
   | { t: "kick_player"; playerId: PlayerId }
   | { t: "start_game" }
-  /** Acknowledges the role reveal; the phase ends early once everyone has. */
+  /** Acknowledges the role reveal; the phase ends early once every seat has. */
   | { t: "ready" }
   /** Night action. `groupId` names the `SelectionGroup` being satisfied. */
   | { t: "night_action"; groupId: string; slots: CardSlot[] }
@@ -52,8 +64,19 @@ export type ClientMessage =
   | { t: "end_discussion" }
   | { t: "cast_vote"; targetId: PlayerId }
   /** Host only. Returns the room to the lobby, keeping players and settings. */
-  | { t: "play_again" }
-  | { t: "ping" };
+  | { t: "play_again" };
+
+export type ClientMessage =
+  /** First frame on every socket. Carries every seat this device can resume. */
+  | { t: "hello"; protocol: number; code?: string; seats?: SeatCredentials[] }
+  | { t: "create_room"; nickname: string }
+  | { t: "join_room"; code: string; nickname: string }
+  /** Seats a second player on this device, sharing the screen with the first. */
+  | { t: "add_player"; nickname: string }
+  /** Releases one seat, or every seat on this device when `seat` is omitted. */
+  | { t: "leave_room"; seat?: PlayerId }
+  | { t: "ping" }
+  | (SeatedMessage & { seat: PlayerId });
 
 /* -------------------------------------------------------------------------- */
 /* Server -> Client                                                           */
@@ -69,12 +92,16 @@ export type ErrorCode =
   | "not_in_room"
   | "invalid_deck"
   | "invalid_action"
+  | "device_full"
   | "kicked"
   | "internal";
 
 export type ServerMessage =
-  /** Sent once a socket is attached to a seat. Credentials go to localStorage. */
-  | { t: "welcome"; playerId: PlayerId; token: string; code: string }
+  /**
+   * Sent whenever the set of seats this device holds changes. The whole list
+   * goes to localStorage, so a refresh reclaims every seat at once.
+   */
+  | { t: "welcome"; code: string; seats: SeatCredentials[] }
   | { t: "state"; state: ClientState }
   /**
    * Speaker cue, sent to the host device only. `key` indexes the narration
@@ -82,8 +109,11 @@ export type ServerMessage =
    */
   | { t: "narrate"; key: string; params?: Record<string, string | number> }
   | { t: "error"; code: ErrorCode; message: string }
-  /** Confirms the socket is unbound, e.g. after leaving or being kicked. */
-  | { t: "goodbye"; reason: ErrorCode | "left" }
+  /**
+   * A seat is no longer bound to this socket. `seat` names it when the device
+   * keeps its other seat; without it, the whole device is unbound.
+   */
+  | { t: "goodbye"; reason: ErrorCode | "left"; seat?: PlayerId }
   | { t: "pong" };
 
 /* -------------------------------------------------------------------------- */
@@ -103,6 +133,12 @@ export interface PublicPlayer {
   ready?: boolean;
   /** Set during `vote` only, and only as a boolean - never the target. */
   hasVoted?: boolean;
+  /**
+   * 1-based marker shared by the players sitting on one device, absent for
+   * anyone playing alone. Public because it is plain to see around the table,
+   * and it lets the lobby show the host how the phones are shared out.
+   */
+  deviceGroup?: number;
 }
 
 /** A server-authoritative countdown. Clients render it against `serverNow`. */

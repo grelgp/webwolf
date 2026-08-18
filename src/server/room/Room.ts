@@ -13,6 +13,7 @@
 
 import {
   DEFAULT_SETTINGS,
+  MAX_SEATS_PER_DEVICE,
   MIN_PLAYERS,
   NICKNAME_MAX_LENGTH,
   NUMERIC_SETTING_KEYS,
@@ -52,6 +53,11 @@ export interface Player {
   /** Resume credential; never leaves the server except to its own owner. */
   token: string;
   nickname: string;
+  /**
+   * The device this seat is played on. Two seats sharing one are two real
+   * players with their own cards and votes; they simply pass the phone.
+   */
+  deviceId: string;
   connected: boolean;
   /** Epoch ms of the last disconnect, used for host hand-over and room TTL. */
   disconnectedAt: number | null;
@@ -143,6 +149,26 @@ export class Room {
     return this.hostIdValue === playerId;
   }
 
+  /** How many seats `deviceId` currently holds. */
+  seatsOnDevice(deviceId: string): number {
+    return this.seats.reduce((total, player) => total + (player.deviceId === deviceId ? 1 : 0), 0);
+  }
+
+  /**
+   * Seats held by the most crowded device, at least 1.
+   *
+   * The role reveal is scaled by this: on a shared phone the players look at
+   * their cards one after the other, so a single share of the configured time
+   * would leave the second one staring at a gate that is about to expire.
+   */
+  maxSeatsPerDevice(): number {
+    const perDevice = new Map<string, number>();
+    for (const player of this.seats) {
+      perDevice.set(player.deviceId, (perDevice.get(player.deviceId) ?? 0) + 1);
+    }
+    return Math.max(1, ...perDevice.values());
+  }
+
   get inGame(): boolean {
     return this.phase !== "lobby";
   }
@@ -152,21 +178,26 @@ export class Room {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Seats a new player. Returns the created seat, or an error when the room is
-   * full or a round is already running.
+   * Seats a new player on `deviceId`. Returns the created seat, or an error
+   * when the room is full, the device already holds its share of seats, or a
+   * round is already running.
    */
-  join(nickname: string): { player: Player } | { error: CommandError } {
+  join(nickname: string, deviceId: string): { player: Player } | { error: CommandError } {
     if (this.inGame) {
       return { error: fail("game_in_progress", "A round is already running in this room.") };
     }
     if (this.seats.length >= maxSupportedPlayers()) {
       return { error: fail("room_full", "This room is full.") };
     }
+    if (this.seatsOnDevice(deviceId) >= MAX_SEATS_PER_DEVICE) {
+      return { error: fail("device_full", "This device already holds its share of seats.") };
+    }
 
     const player: Player = {
       id: newPlayerId(),
       token: newToken(),
       nickname: this.uniqueNickname(sanitizeNickname(nickname)),
+      deviceId,
       connected: false,
       disconnectedAt: Date.now(),
       ready: false,
@@ -326,8 +357,9 @@ export class Room {
     for (const player of this.seats) player.ready = false;
 
     log.info(`${this.code}: round ${this.round + 1} dealt to ${seatIds.length} players`);
-    this.enterPhase("role_reveal", this.settings.roleRevealSeconds * 1000, () => this.beginNight());
-    this.narrate("phase.roleReveal", { seconds: this.settings.roleRevealSeconds });
+    const revealSeconds = this.settings.roleRevealSeconds * this.maxSeatsPerDevice();
+    this.enterPhase("role_reveal", revealSeconds * 1000, () => this.beginNight());
+    this.narrate("phase.roleReveal", { seconds: revealSeconds });
     return ok();
   }
 
