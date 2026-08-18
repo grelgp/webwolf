@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      `viewport-fit=cover` plus the safe-area padding in styles.css keeps the
+      layout clear of notches and home indicators, since phones lie face up on
+      the table for the whole round and every tap target must stay reachable.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="theme-color" content="#10131a" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Une nuit chez les loups-garous, sur vos téléphones : rôles secrets, nuit narrée et vote en temps réel."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>WebWolf — Une nuit chez les loups-garous</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>"
+    />
+  </head>
+  <body>
+    <main id="app" class="app"></main>
+    <noscript>
+      <p style="padding: 2rem; color: #e8ebf2">
+        WebWolf a besoin de JavaScript pour fonctionner. Activez-le puis rechargez la page.
+      </p>
+    </noscript>
+    <script type="module" src="/dist/app.js"></script>
+  </body>
+</html>

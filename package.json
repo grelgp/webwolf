@@ -1,0 +1,38 @@
+{
+  "name": "webwolf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone-friendly online version of One Night Ultimate Werewolf, played over WebSockets.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "esbuild src/client/main.ts --bundle --format=esm --target=es2020 --outfile=public/dist/app.js --sourcemap",
+    "build:server": "tsc -p tsconfig.server.json",
+    "dev": "concurrently -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:client": "esbuild src/client/main.ts --bundle --format=esm --target=es2020 --outfile=public/dist/app.js --sourcemap --watch",
+    "dev:server": "tsx watch src/server/index.ts",
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist public/dist",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test": "npm run build:server && node scripts/rules.test.mjs",
+    "test:rules": "node scripts/rules.test.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/ws": "^8.5.10",
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.23.0",
+    "rimraf": "^5.0.9",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}

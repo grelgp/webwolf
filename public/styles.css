@@ -1,0 +1,925 @@
+/*
+ * WebWolf styles.
+ *
+ * Constraints that drive every choice here:
+ *
+ * - Phones lie flat on a table, often at arm's length. Type is large, tap
+ *   targets are at least 44px, and nothing important sits in a corner.
+ * - One screen, no scrolling. Layouts are flex columns that shrink; the app
+ *   shell keeps `overflow-y: auto` as a safety net for very short screens
+ *   rather than clipping content outright.
+ * - The night must be dark. `body[data-phase]` re-themes the whole page so a
+ *   table full of face-up phones does not glow during the night phase.
+ */
+
+:root {
+  --bg: #10131a;
+  --bg-elevated: #1a1f2b;
+  --bg-tile: #222839;
+  --border: #2e3548;
+  --text: #e8ebf2;
+  --text-muted: #8d97ab;
+  --accent: #7c6cf0;
+  --accent-contrast: #ffffff;
+  --danger: #e05260;
+  --success: #3fb27f;
+  --warning: #e0a84e;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --gap: 12px;
+  --pad: 16px;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: dark;
+}
+
+/* Phase theming ----------------------------------------------------------- */
+
+body[data-phase="night"] {
+  --bg: #05070d;
+  --bg-elevated: #0c1018;
+  --bg-tile: #131828;
+  --accent: #5b6bd6;
+}
+
+body[data-phase="role_reveal"] {
+  --accent: #d4a017;
+}
+
+body[data-phase="day"] {
+  --bg: #141824;
+  --accent: #e0a84e;
+}
+
+body[data-phase="vote"] {
+  --accent: #e05260;
+}
+
+body[data-phase="reveal"] {
+  --accent: #3fb27f;
+}
+
+/* Reset ------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  /* Tapping tiles quickly must never trigger zoom or text selection. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 400ms ease;
+}
+
+h1,
+h2,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Shell ------------------------------------------------------------------- */
+
+/*
+ * A fixed height, not a minimum: this element has to *be* the scroll container
+ * so that the lobby's sticky action bar has something to stick to. With
+ * `min-height` it would simply grow and the body would scroll instead.
+ */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(var(--pad) + var(--safe-top)) var(--pad)
+    calc(var(--pad) + var(--safe-bottom));
+  gap: var(--gap);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.header__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.header__subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.header__aside {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.countdown {
+  display: inline-block;
+  min-width: 3ch;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* Home -------------------------------------------------------------------- */
+
+.screen--home {
+  justify-content: center;
+  text-align: center;
+}
+
+.home__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.home__logo {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.home__title {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.home__tagline {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 28ch;
+}
+
+.home__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  text-align: left;
+}
+
+.home__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.home__divider::before,
+.home__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.home__join {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap);
+}
+
+/* Fields ------------------------------------------------------------------ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field--grow {
+  flex: 1;
+}
+
+.field__label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field__input {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  /* 16px minimum stops iOS Safari from zooming when the field gains focus. */
+  font-size: 16px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field__input--code {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Buttons ----------------------------------------------------------------- */
+
+.btn {
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-weight: 600;
+  transition:
+    transform 80ms ease,
+    opacity 120ms ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 1.05rem;
+}
+
+.btn--ghost {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--chip {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0;
+  border-color: var(--border);
+  background: var(--bg-tile);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+
+/*
+ * The lobby is the one screen that can outgrow a phone: deck plus settings
+ * plus a player list. Its action bar sticks to the bottom so "Lancer la
+ * partie" is always one tap away, however far down the host has scrolled.
+ */
+.screen--lobby .actions {
+  position: sticky;
+  /* Pulled down over the shell's own bottom padding, so no scrolled content
+     peeks out beneath the bar. */
+  bottom: calc(-1 * (var(--pad) + var(--safe-bottom)));
+  padding: 12px 0 calc(8px + var(--pad) + var(--safe-bottom));
+  /* Opaque, or the panels underneath show through the ghost button. The
+     shadow does the fading instead of a gradient background. */
+  background: var(--bg);
+  box-shadow: 0 -14px 18px -6px var(--bg);
+}
+
+/* Panels ------------------------------------------------------------------ */
+
+.screen--lobby .panel {
+  padding: 12px;
+  gap: 8px;
+}
+
+.screen--lobby .player {
+  padding: 6px 10px;
+}
+
+.screen--lobby .deck__row {
+  padding: 4px 8px;
+}
+
+.screen--lobby .stepper {
+  min-height: 40px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.panel__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.panel__hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.warning {
+  color: var(--warning);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Banners ----------------------------------------------------------------- */
+
+.banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.banner--warn {
+  background: rgba(224, 168, 78, 0.16);
+  color: var(--warning);
+}
+
+.banner--error {
+  background: rgba(224, 82, 96, 0.16);
+  color: var(--danger);
+}
+
+/* Room code --------------------------------------------------------------- */
+
+.room-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.room-code__hint {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.room-code__value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+}
+
+/* Player list ------------------------------------------------------------- */
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tile);
+}
+
+.player--offline {
+  opacity: 0.5;
+}
+
+.player__name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player__remove {
+  min-width: 32px;
+  min-height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.chip--host {
+  background: rgba(124, 108, 240, 0.2);
+  color: var(--accent);
+}
+
+.chip--dead {
+  background: rgba(224, 82, 96, 0.2);
+  color: var(--danger);
+}
+
+.chip--muted {
+  opacity: 0.7;
+}
+
+.pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.pill--ok {
+  background: rgba(63, 178, 127, 0.18);
+  color: var(--success);
+}
+
+.pill--warn {
+  background: rgba(224, 168, 78, 0.18);
+  color: var(--warning);
+}
+
+/* Deck builder ------------------------------------------------------------ */
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deck__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tile);
+  opacity: 0.55;
+}
+
+.deck__row--active {
+  opacity: 1;
+}
+
+.deck__glyph {
+  font-size: 1.3rem;
+}
+
+.deck__name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.deck__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deck__count {
+  min-width: 2ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* Steppers and toggles ---------------------------------------------------- */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.stepper__label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.stepper__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper__value {
+  min-width: 5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 8px 0;
+  border: none;
+  background: none;
+  width: 100%;
+}
+
+.toggle__label {
+  font-weight: 600;
+}
+
+.toggle__track {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--bg-tile);
+  transition: background-color 150ms ease;
+  flex-shrink: 0;
+}
+
+.toggle--on .toggle__track {
+  background: var(--accent);
+}
+
+.toggle__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 150ms ease;
+}
+
+.toggle--on .toggle__knob {
+  transform: translateX(18px);
+}
+
+/* Stage ------------------------------------------------------------------- */
+
+/*
+ * Grows into whatever space the header and the action bar leave, and centres
+ * its contents. Without it a three-player round sits in the top fifth of a
+ * modern phone and every tap is a stretch.
+ */
+.stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/* Tile grid --------------------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 6px;
+  min-height: 96px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-tile);
+  text-align: center;
+  transition:
+    transform 80ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.tile:active {
+  transform: scale(0.97);
+}
+
+.tile__glyph {
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+.tile__label {
+  font-weight: 700;
+  font-size: 0.92rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile__role {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.tile__note {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tile--selectable {
+  border-color: var(--accent);
+}
+
+.tile--selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tile));
+}
+
+.tile--revealed {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, var(--bg-tile));
+}
+
+/*
+ * A face-up card is a *result*, so it keeps its own colour rather than the
+ * phase accent - which on the werewolf-win screen is red and clashed with the
+ * green border.
+ */
+.tile--revealed .tile__role {
+  color: var(--success);
+}
+
+.tile--muted {
+  opacity: 0.42;
+}
+
+.tile--eliminated {
+  border-color: var(--danger);
+}
+
+.tile--eliminated .tile__label {
+  text-decoration: line-through;
+}
+
+/* Role reveal ------------------------------------------------------------- */
+
+.card-hero {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: var(--pad);
+  border: 2px solid var(--accent);
+  border-radius: 20px;
+  background: linear-gradient(160deg, var(--bg-elevated), var(--bg-tile));
+  text-align: center;
+}
+
+.card-hero__glyph {
+  font-size: 4.5rem;
+  line-height: 1;
+}
+
+.card-hero__name {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.card-hero__tagline {
+  color: var(--text-muted);
+  max-width: 26ch;
+}
+
+.card-hero--empty {
+  border-style: dashed;
+  border-color: var(--border);
+  font-size: 4rem;
+  color: var(--text-muted);
+}
+
+/* Night ------------------------------------------------------------------- */
+
+.screen--asleep {
+  justify-content: center;
+}
+
+.asleep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  text-align: center;
+  /* Dim rather than hidden: the phone is face up and must not light the room. */
+  opacity: 0.75;
+}
+
+.asleep__glyph {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.asleep__title {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.asleep__instruction {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.asleep__step {
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Result ------------------------------------------------------------------ */
+
+.screen--result-werewolf {
+  --accent: var(--danger);
+}
+
+.screen--result-nobody {
+  --accent: var(--text-muted);
+}
+
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tile);
+  font-size: 0.9rem;
+}
+
+.result-row--dead {
+  background: rgba(224, 82, 96, 0.14);
+}
+
+.result-row__name {
+  flex: 1;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-row__roles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.result-row__arrow {
+  color: var(--text-muted);
+}
+
+.result-row__votes {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.role-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.role-chip--final {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text);
+}
+
+/* Motion ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
