@@ -50,11 +50,19 @@ export interface AppState {
   selection: CardSlot[];
   /** Remembered between rounds so a rejoin does not ask for it again. */
   nickname: string;
+  /**
+   * French voices this device's speech engine offers. Populated once
+   * `voiceschanged` fires; empty on engines that never raise it.
+   */
+  voices: SpeechSynthesisVoice[];
+  /** URI of the narrator voice the host picked, or null for automatic. */
+  voiceURI: string | null;
 }
 
 type Listener = (state: AppState) => void;
 
 const NICKNAME_KEY = "webwolf.nickname";
+const VOICE_KEY = "webwolf.voiceURI";
 
 export class Store {
   private listeners: Listener[] = [];
@@ -70,6 +78,8 @@ export class Store {
     clockOffset: 0,
     selection: [],
     nickname: loadNickname(),
+    voices: [],
+    voiceURI: loadVoiceURI(),
   };
 
   subscribe(listener: Listener): void {
@@ -198,6 +208,22 @@ export class Store {
     this.patch({ nickname });
   }
 
+  /** Refreshes the voices offered by this device's speech engine. */
+  setVoices(voices: SpeechSynthesisVoice[]): void {
+    this.patch({ voices });
+  }
+
+  /** Remembers the narrator voice this device should use, or clears it. */
+  setVoiceURI(voiceURI: string | null): void {
+    try {
+      if (voiceURI) localStorage.setItem(VOICE_KEY, voiceURI);
+      else localStorage.removeItem(VOICE_KEY);
+    } catch {
+      // Storage unavailable; the choice simply is not remembered.
+    }
+    this.patch({ voiceURI });
+  }
+
   /**
    * Applies a server snapshot to the seat it belongs to.
    *
@@ -275,5 +301,13 @@ function loadNickname(): string {
     return localStorage.getItem(NICKNAME_KEY) ?? "";
   } catch {
     return "";
+  }
+}
+
+function loadVoiceURI(): string | null {
+  try {
+    return localStorage.getItem(VOICE_KEY);
+  } catch {
+    return null;
   }
 }

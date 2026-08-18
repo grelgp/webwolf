@@ -45,4 +45,10 @@ export interface Actions {
 
   /** Lobby-only: speaks a sample line so the host can set the volume. */
   testVoice(): void;
+
+  /**
+   * Lobby-only: picks which installed voice narrates, by URI, or `null` to
+   * let the engine choose. Purely local to this device, not a room setting.
+   */
+  setVoice(voiceURI: string | null): void;
 }

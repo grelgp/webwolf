@@ -191,6 +191,45 @@ export function toggle(
   );
 }
 
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * A native `<select>`. Unlike a free-text input it survives the lobby's
+ * per-snapshot rebuild fine: picking an option is a single discrete action,
+ * not something a rebuild can interrupt mid-keystroke.
+ */
+export function select(
+  label: string,
+  options: SelectOption[],
+  value: string,
+  onChange: (next: string) => void,
+  disabled = false,
+): HTMLElement {
+  return h(
+    "label",
+    { class: "select" },
+    h("span", { class: "select__label", text: label }),
+    h(
+      "select",
+      {
+        class: "select__control",
+        disabled,
+        attrs: { "aria-label": label },
+        onInput: (event) => onChange((event.target as HTMLSelectElement).value),
+      },
+      options.map((option) =>
+        h("option", {
+          text: option.label,
+          attrs: { value: option.value, selected: option.value === value },
+        }),
+      ),
+    ),
+  );
+}
+
 /** Room code, rendered large enough to read across a table. */
 export function roomCode(code: string): HTMLElement {
   return h(

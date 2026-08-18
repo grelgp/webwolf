@@ -29,6 +29,7 @@ import {
   header,
   primaryButton,
   roomCode,
+  select,
   stepper,
   toggle,
 } from "../components.js";
@@ -64,7 +65,7 @@ export function renderLobby(store: Store, actions: Actions): HTMLElement {
     validation.ok
       ? null
       : banner(deckProblem(validation.reason, validation.detail), "warn"),
-    settingsPanel(state.settings, isHost, actions),
+    settingsPanel(state.settings, isHost, store, actions),
 
     h(
       "div",
@@ -234,6 +235,7 @@ function deckBuilder(
 function settingsPanel(
   settings: RoomSettings,
   isHost: boolean,
+  store: Store,
   actions: Actions,
 ): HTMLElement {
   const bump = (key: NumericSettingKey, direction: 1 | -1) => {
@@ -268,6 +270,22 @@ function settingsPanel(
           actions.setSettings({ narrationEnabled: next }),
         ),
         h("p", { class: "panel__hint", text: UI.narrationHint }),
+        // Voice choice is this phone's own, not a room setting: it never
+        // reaches the server and the other players never see it.
+        store.state.voices.length > 0 &&
+          select(
+            UI.settingVoice,
+            [
+              { value: "", label: UI.voiceAuto },
+              ...store.state.voices.map((voice) => ({
+                value: voice.voiceURI,
+                label: voice.name,
+              })),
+            ],
+            store.state.voiceURI ?? "",
+            (uri) => actions.setVoice(uri || null),
+            !settings.narrationEnabled,
+          ),
         ghostButton(UI.testVoice, () => actions.testVoice()),
       ),
   );

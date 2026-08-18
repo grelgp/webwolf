@@ -20,45 +20,75 @@ import type { RoleId } from "../../shared/roles.js";
 /** Names as printed on the French edition of the cards. */
 export const ROLE_NAMES: Record<RoleId, string> = {
   werewolf: "Loup-Garou",
+  minion: "Sbire",
+  mason: "Franc-Maçon",
   villager: "Villageois",
   seer: "Voyante",
   robber: "Voleur",
   troublemaker: "Noiseuse",
+  drunk: "Soûlard",
+  insomniac: "Insomniaque",
+  hunter: "Chasseur",
+  tanner: "Tanneur",
 };
 
 /** Plural form, used by the deck builder. */
 export const ROLE_NAMES_PLURAL: Record<RoleId, string> = {
   werewolf: "Loups-Garous",
+  minion: "Sbires",
+  mason: "Francs-Maçons",
   villager: "Villageois",
   seer: "Voyantes",
   robber: "Voleurs",
   troublemaker: "Noiseuses",
+  drunk: "Soûlards",
+  insomniac: "Insomniaques",
+  hunter: "Chasseurs",
+  tanner: "Tanneurs",
 };
 
 /** One line shown under the card during the reveal. */
 export const ROLE_TAGLINES: Record<RoleId, string> = {
   werewolf: "Vous dévorez le village. Ne vous faites pas démasquer.",
+  minion: "Vous servez les loups-garous : vous les voyez, ils ne vous voient pas.",
+  mason: "Vous reconnaissez l'autre franc-maçon. À vous deux, vous êtes sûrs.",
   villager: "Aucun pouvoir. Votre seule arme, c'est la parole.",
   seer: "Vous voyez une carte cachée pendant la nuit.",
   robber: "Vous volez la carte d'un joueur et devenez son rôle.",
   troublemaker: "Vous échangez les cartes de deux joueurs, à l'aveugle.",
+  drunk: "Vous prenez une carte du centre sans jamais la regarder.",
+  insomniac: "À la fin de la nuit, vous revoyez votre propre carte.",
+  hunter: "Si vous mourez, celui que vous avez désigné meurt avec vous.",
+  tanner: "Vous ne gagnez qu'en mourant. Faites-vous éliminer.",
 };
 
 /** Instruction shown to the acting player at the top of their night turn. */
 export const ROLE_NIGHT_PROMPTS: Record<RoleId, string> = {
   werewolf: "Repérez vos complices.",
+  minion: "Repérez les loups-garous. Ils ne sauront pas qui vous êtes.",
+  mason: "Repérez l'autre franc-maçon.",
   villager: "Vous dormez.",
   seer: "Regardez la carte d'un joueur, ou deux cartes du centre.",
   robber: "Choisissez un joueur : vous prenez sa carte, il reçoit la vôtre.",
   troublemaker: "Échangez les cartes de deux autres joueurs, sans les voir.",
+  drunk: "Choisissez une carte du centre : vous la prenez sans la regarder.",
+  insomniac: "Voici votre carte, telle qu'elle est au bout de la nuit.",
+  hunter: "Vous dormez.",
+  tanner: "Vous dormez.",
 };
 
 export const ROLE_EMOJI: Record<RoleId, string> = {
   werewolf: "🐺",
+  minion: "🐾",
+  mason: "🧱",
   villager: "🧑‍🌾",
   seer: "🔮",
   robber: "🥷",
   troublemaker: "🔀",
+  drunk: "🍺",
+  insomniac: "🥱",
+  hunter: "🏹",
+  tanner: "💀",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -80,6 +110,12 @@ const NARRATION: Record<string, (params: NarrationParams) => string> = {
     "Loups-garous, réveillez-vous et regardez-vous. Si vous êtes seul, vous pouvez regarder une carte du centre.",
   "sleep.werewolf": () => "Loups-garous, fermez les yeux.",
 
+  "wake.minion": () => "Sbire, réveille-toi et repère les loups-garous.",
+  "sleep.minion": () => "Sbire, ferme les yeux.",
+
+  "wake.mason": () => "Francs-maçons, réveillez-vous et regardez-vous.",
+  "sleep.mason": () => "Francs-maçons, fermez les yeux.",
+
   "wake.seer": () =>
     "Voyante, réveille-toi. Tu peux regarder la carte d'un autre joueur, ou deux cartes du centre.",
   "sleep.seer": () => "Voyante, ferme les yeux.",
@@ -92,12 +128,21 @@ const NARRATION: Record<string, (params: NarrationParams) => string> = {
     "Noiseuse, réveille-toi. Tu peux échanger les cartes de deux autres joueurs, sans les regarder.",
   "sleep.troublemaker": () => "Noiseuse, ferme les yeux.",
 
+  "wake.drunk": () =>
+    "Soûlard, réveille-toi. Échange ta carte avec une carte du centre, sans la regarder.",
+  "sleep.drunk": () => "Soûlard, ferme les yeux.",
+
+  "wake.insomniac": () => "Insomniaque, réveille-toi et regarde ta carte.",
+  "sleep.insomniac": () => "Insomniaque, ferme les yeux.",
+
   "phase.day": (p) =>
     `Le jour se lève. Tout le monde ouvre les yeux. Vous avez ${spokenDuration(Number(p.seconds))} pour débattre.`,
   "phase.vote": () => "Le temps est écoulé. Le vote commence : désignez un joueur.",
 
   "outcome.village": () => "Le village l'emporte !",
   "outcome.werewolf": () => "Les loups-garous l'emportent !",
+  "outcome.tanner": () => "Le tanneur l'emporte, seul : il voulait mourir, vous l'avez tué.",
+  "outcome.tanner_village": () => "Le tanneur et le village l'emportent ensemble !",
   "outcome.nobody": () => "Personne ne l'emporte. Un innocent est mort pour rien.",
 };
 
@@ -119,6 +164,24 @@ function spokenDuration(seconds: number): string {
 /* -------------------------------------------------------------------------- */
 /* Interface                                                                  */
 /* -------------------------------------------------------------------------- */
+
+/** Headline on the reveal screen, one per possible winner. */
+const OUTCOME_TITLES: Record<RoundOutcome, string> = {
+  village: "Le village gagne !",
+  werewolf: "Les loups-garous gagnent !",
+  tanner: "Le tanneur gagne !",
+  tanner_village: "Le tanneur et le village gagnent !",
+  nobody: "Personne ne gagne",
+};
+
+/** The line under it: why it ended that way. */
+const OUTCOME_DETAILS: Record<RoundOutcome, string> = {
+  village: "Un loup-garou a été éliminé — ou le village a su n'accuser personne.",
+  werewolf: "Aucun loup-garou n'a été éliminé.",
+  tanner: "Le tanneur voulait mourir, et il est mort. Tous les autres perdent.",
+  tanner_village: "Le tanneur est mort, et un loup-garou est tombé avec lui.",
+  nobody: "Il n'y avait aucun loup-garou, et un innocent a été éliminé.",
+};
 
 export const UI = {
   appName: "WebWolf",
@@ -154,6 +217,8 @@ export const UI = {
   settingVote: "Vote",
   settingNarration: "Narration vocale",
   narrationHint: "Cet appareil lit les phases à voix haute. Posez-le au centre de la table.",
+  settingVoice: "Voix",
+  voiceAuto: "Automatique",
   testVoice: "Tester la voix",
   testVoiceLine: "Loups-garous, réveillez-vous.",
   startGame: "Lancer la partie",
@@ -204,6 +269,8 @@ export const UI = {
   fellowNote: "Complice",
   swappedNote: "Échangée",
   nightAlone: "Vous êtes le seul loup-garou. Vous pouvez regarder une carte du centre.",
+  nightMasonAlone: "Vous êtes le seul franc-maçon : l'autre carte est au centre.",
+  nightMinionAlone: "Aucun loup-garou à la table : ils sont tous au centre.",
   nightSkip: "Passer",
   nightSkipped: "Vous avez passé votre tour.",
   nightNothingToDo: "Rien à faire ce tour-ci. Regardez bien, puis refermez les yeux.",
@@ -234,20 +301,12 @@ export const UI = {
 
   // Reveal -----------------------------------------------------------------
   revealResultTitle: "Résultat",
-  outcomeTitle: (outcome: RoundOutcome) =>
-    outcome === "village"
-      ? "Le village gagne !"
-      : outcome === "werewolf"
-        ? "Les loups-garous gagnent !"
-        : "Personne ne gagne",
-  outcomeDetail: (outcome: RoundOutcome) =>
-    outcome === "village"
-      ? "Un loup-garou a été éliminé — ou le village a su n'accuser personne."
-      : outcome === "werewolf"
-        ? "Aucun loup-garou n'a été éliminé."
-        : "Il n'y avait aucun loup-garou, et un innocent a été éliminé.",
+  outcomeTitle: (outcome: RoundOutcome) => OUTCOME_TITLES[outcome],
+  outcomeDetail: (outcome: RoundOutcome) => OUTCOME_DETAILS[outcome],
   nobodyDied: "Personne n'a été éliminé : chaque joueur a reçu exactement une voix.",
   eliminatedLabel: "Éliminé",
+  huntedLabel: "Abattu",
+  huntedNote: "Le chasseur a emporté sa cible avec lui.",
   votesReceived: (n: number) => (n === 1 ? "1 voix" : `${n} voix`),
   dealtToFinal: "→",
   centerTitle: "Cartes du centre",

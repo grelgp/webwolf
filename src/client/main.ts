@@ -27,6 +27,15 @@ if (!root) throw new Error("Missing #app root element");
 
 const store = new Store();
 const narrator = new Narrator();
+narrator.setPreferredVoice(store.state.voiceURI);
+
+// `getVoices()` is empty until the engine has loaded its list, and most
+// browsers only announce readiness via this event.
+if (narrator.supported) {
+  const refreshVoices = () => store.setVoices(narrator.listVoices());
+  refreshVoices();
+  window.speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+}
 
 const socket = new GameSocket({
   onMessage: (message) => handleMessage(message),
@@ -144,6 +153,11 @@ const actions: Actions = {
   testVoice() {
     narrator.unlock();
     narrator.say(UI.testVoiceLine);
+  },
+
+  setVoice(voiceURI) {
+    narrator.setPreferredVoice(voiceURI);
+    store.setVoiceURI(voiceURI);
   },
 };
 
