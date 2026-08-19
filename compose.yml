@@ -1,0 +1,34 @@
+# WebWolf — the ONE service exposed to the internet.
+#
+# `entrypoints=websecure` is what makes it public. Nothing else on this host
+# uses that entrypoint. See ../README.md.
+
+networks:
+  proxy:
+    external: true
+
+services:
+  webwolf:
+    env_file: "../.env"
+    build: .
+    image: webwolf:latest
+    container_name: webwolf
+    restart: unless-stopped
+
+    # No `ports:` on purpose. Traefik reaches port 3000 over the proxy
+    # network; publishing it would also open it to the whole LAN.
+
+    environment:
+      - TZ=Europe/Paris
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webwolf.rule=Host(`webwolf.grelgp.fr`)"
+      # Public AND reachable over the VPN, so peers do not have to hairpin out
+      # through the router to come back to this same box.
+      - "traefik.http.routers.webwolf.entrypoints=websecure,internal"
+      - "traefik.http.routers.webwolf.middlewares=public-ratelimit@file"
+      - "traefik.http.services.webwolf.loadbalancer.server.port=3000"
+
+    networks:
+      - proxy
