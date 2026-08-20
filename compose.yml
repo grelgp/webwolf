@@ -1,7 +1,6 @@
-# WebWolf — the ONE service exposed to the internet.
+# WebWolf — party game, public on the internet.
 #
-# `entrypoints=websecure` is what makes it public. Nothing else on this host
-# uses that entrypoint. See ../README.md.
+# `entrypoints=websecure` is what makes it public. See ../README.md.
 
 networks:
   proxy:

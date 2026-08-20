@@ -101,6 +101,30 @@ across four devices, one of which is shared.
 
 ---
 
+## Docker
+
+`compose.yml` builds the image from local source (`build: .`, tagged `webwolf:latest`)
+rather than pulling one from a registry. That means `docker compose up -d` on its own will
+**not** pick up a code change — the image has to be rebuilt first:
+
+```bash
+cd webwolf
+docker compose build && docker compose up -d
+```
+
+To confirm the update took effect, check the running container's age and watch its logs:
+
+```bash
+docker ps --filter name=webwolf --format '{{.Image}} {{.CreatedAt}} {{.Status}}'
+docker logs -f webwolf
+```
+
+This repo's `compose.yml` only defines the webwolf service itself. Routing (Traefik labels,
+entrypoints) and public-exposure verification live one level up, in the parent workspace —
+see `../CLAUDE.md` and `../README.md`.
+
+---
+
 ## Configuration
 
 Everything is optional and read from the environment:
