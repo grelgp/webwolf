@@ -17,7 +17,7 @@ import { ROLES, maxSupportedPlayers, wakeOrderForDeck } from "../dist/shared/rol
 import { MAX_SEATS_PER_DEVICE, MIN_PLAYERS } from "../dist/shared/constants.js";
 import { Room } from "../dist/server/room/Room.js";
 import { buildClientState } from "../dist/server/net/views.js";
-import { suggestDeck, validateDeck } from "../dist/shared/deck.js";
+import { deckToCounts, suggestDeck, validateDeck } from "../dist/shared/deck.js";
 import { createNightState, getTurnState, readSlot } from "../dist/server/game/nightState.js";
 import {
   ROLE_HANDLERS,
@@ -381,6 +381,11 @@ function emptyRoom() {
   return new Room("TEST", { onChange() {}, onNarrate() {} });
 }
 
+/** What the host does in the lobby once everyone is seated. */
+function fitDeck(room, hostId) {
+  assert.equal(room.setDeck(hostId, deckToCounts(suggestDeck(room.playerCount))), null);
+}
+
 test("A device seats two players, and no more", () => {
   const room = emptyRoom();
   assert.ok("player" in room.join("Alice", "device-1"));
@@ -417,7 +422,8 @@ test("The reveal lasts as long as the busiest device needs", () => {
   room.join("Chloe", "device-3");
 
   assert.equal(room.maxSeatsPerDevice(), 2);
-  assert.equal(room.startGame(host.id), null, "the auto-fitted deck is playable");
+  fitDeck(room, host.id);
+  assert.equal(room.startGame(host.id), null, "the deck is playable");
   assert.equal(
     room.deadline.durationMs,
     room.settings.roleRevealSeconds * 2 * 1000,
@@ -457,7 +463,7 @@ function roomInTheNight() {
   const bruno = room.join("Bruno", "device-2").player;
   room.join("Chloe", "device-3");
 
-  assert.equal(room.startGame(host.id), null, "the auto-fitted deck is playable");
+  assert.equal(room.startGame(host.id), null, "the seeded deck fits a table of three");
   // The reveal ends the moment every seat acknowledges, which opens the night.
   for (const player of room.players) room.markReady(player.id);
   assert.equal(room.phase, "night");
@@ -675,6 +681,38 @@ test("A Chasseur never fires twice at the same corpse", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+console.log("\n== The deck belongs to the host ==");
+
+test("The deck the host built survives players coming and going", () => {
+  const room = emptyRoom();
+  const host = room.join("Alice", "device-1").player;
+  room.join("Bruno", "device-2");
+  const chloe = room.join("Chloe", "device-3").player;
+  const dan = room.join("Dan", "device-4").player;
+
+  // A hand-tuned deck for four, deliberately not what suggestDeck() returns.
+  const tuned = deckToCounts(["werewolf", "werewolf", "seer", "robber", "villager", "tanner", "minion"]);
+  assert.equal(room.setDeck(host.id, tuned), null);
+  assert.deepEqual(deckToCounts(room.deck), tuned);
+
+  room.removePlayer(dan.id);
+  assert.deepEqual(deckToCounts(room.deck), tuned, "one seat short is a warning, not a reason to rebuild");
+
+  room.removePlayer(chloe.id);
+  assert.deepEqual(deckToCounts(room.deck), tuned, "and neither is dropping below the minimum table");
+
+  assert.equal(room.join("Eve", "device-5").error, undefined);
+  assert.deepEqual(deckToCounts(room.deck), tuned, "a new arrival does not rebuild it either");
+  room.dispose();
+});
+
+test("A room opens on a playable default deck", () => {
+  const room = emptyRoom();
+  assert.equal(validateDeck(room.deck, MIN_PLAYERS).ok, true);
+  room.dispose();
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

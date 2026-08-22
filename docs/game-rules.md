@@ -33,9 +33,13 @@ few as five phones, since a device can seat two of them. That ceiling is derived
 hard-coded — registering more roles raises it automatically
 (see [adding-a-role.md](adding-a-role.md)).
 
-The lobby suggests a deck for the table size and lets the host tune it card by card. The
-suggestion adds the Masons two at a time: a deck holding a single Mason is legal, and its
-holder would simply always find their partner in the center.
+A new room opens on a suggested deck, and from then on the deck is the host's: they tune it
+card by card, and nothing else ever rewrites it. Players joining or leaving change how many
+cards the deck *needs*, so the lobby may show it as the wrong size until the host adjusts —
+that warning is deliberate, because silently rebuilding the deck would throw away a
+hand-tuned list every time somebody's phone dropped. The initial suggestion adds the Masons
+two at a time: a deck holding a single Mason is legal, and
+its holder would simply always find their partner in the center.
 
 The deck is **public**. Everyone sees the composition in the lobby, exactly as everyone can see
 which cards were put in the box at a real table. Knowing there is exactly one Robber in play is
