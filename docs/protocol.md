@@ -68,6 +68,7 @@ refused with `not_in_room`, so a shared phone can never act for anyone but its o
 | `night_action { groupId, slots }` | acting player | See below |
 | `night_skip` | acting player | Every night action is optional |
 | `end_discussion` | host, day | Ends the discussion timer early |
+| `stop_round` | host, night | Abandons the round; the table returns to the lobby |
 | `cast_vote { targetId }` | seated, vote | Changeable until everyone has voted |
 | `play_again` | host, reveal | Keeps players, deck and settings |
 

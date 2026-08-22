@@ -135,6 +135,11 @@ const NARRATION: Record<string, (params: NarrationParams) => string> = {
   "wake.insomniac": () => "Insomniaque, réveille-toi et regarde ta carte.",
   "sleep.insomniac": () => "Insomniaque, ferme les yeux.",
 
+  // The host stopped the night. Everyone still has their eyes shut, so the
+  // first thing this line has to do is tell them to open them.
+  "phase.stopped": () =>
+    "La manche est interrompue. Ouvrez les yeux, tout le monde revient au salon.",
+
   "phase.day": (p) =>
     `Le jour se lève. Tout le monde ouvre les yeux. Vous avez ${spokenDuration(Number(p.seconds))} pour débattre.`,
   "phase.vote": () => "Le temps est écoulé. Le vote commence : désignez un joueur.",
@@ -272,6 +277,14 @@ export const UI = {
   nightMasonAlone: "Vous êtes le seul franc-maçon : l'autre carte est au centre.",
   nightMinionAlone: "Aucun loup-garou à la table : ils sont tous au centre.",
   nightSkip: "Passer",
+  /** Host only: abandons the round from the night. */
+  stopRound: "Arrêter la manche",
+  stopConfirmTitle: "Arrêter la manche ?",
+  stopConfirmBody:
+    "La nuit s'arrête net : les cartes de cette manche sont perdues et toute la table revient au salon.",
+  stopConfirmCaution: "Prévenez les joueurs à voix haute : ils ont les yeux fermés.",
+  stopConfirmYes: "Oui, arrêter",
+  stopConfirmNo: "Continuer la nuit",
   nightSkipped: "Vous avez passé votre tour.",
   nightNothingToDo: "Rien à faire ce tour-ci. Regardez bien, puis refermez les yeux.",
   nightSwapDone: "Échange effectué.",

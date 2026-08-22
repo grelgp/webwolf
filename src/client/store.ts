@@ -34,6 +34,14 @@ export interface AppState {
   /** True while the "add a second player" form has the screen. */
   addingPlayer: boolean;
   /**
+   * True while the host is being asked to confirm stopping the round.
+   *
+   * Held here rather than in the night screen because that screen is rebuilt
+   * from scratch on every snapshot - and one arrives at every night step, so a
+   * dialog owned by the DOM would vanish under the host mid-decision.
+   */
+  confirmingStop: boolean;
+  /**
    * Seats that have acknowledged the role reveal on *this* device, before the
    * server has echoed it back. Without it the gate would briefly re-offer the
    * card of somebody who has just put the phone down.
@@ -73,6 +81,7 @@ export class Store {
     snapshots: {},
     activeSeatId: null,
     addingPlayer: false,
+    confirmingStop: false,
     acknowledged: [],
     error: null,
     clockOffset: 0,
@@ -175,6 +184,11 @@ export class Store {
     this.patch({ addingPlayer });
   }
 
+  /** Opens or dismisses the host's "stop the round?" confirmation. */
+  setConfirmingStop(confirmingStop: boolean): void {
+    this.patch({ confirmingStop });
+  }
+
   /** Records that a seat has seen its card, without waiting for the server. */
   markAcknowledged(seatId: PlayerId): void {
     if (this.state.acknowledged.includes(seatId)) return;
@@ -254,6 +268,11 @@ export class Store {
       // Seating a companion is a lobby-only affair; a round starting under an
       // open form must not leave it covering the reveal.
       addingPlayer: next.phase === "lobby" && this.state.addingPlayer,
+      // Likewise the stop dialog belongs to the night, and only to the night:
+      // a night that ends on its own under an open dialog must not leave it
+      // hanging over the day. Deliberately not tied to `contextChanged`, which
+      // also fires on every night step and would close it every few seconds.
+      confirmingStop: next.phase === "night" && this.state.confirmingStop,
       acknowledged: contextChanged ? [] : this.state.acknowledged,
       clockOffset: next.serverNow - Date.now(),
       selection: contextChanged ? [] : this.state.selection,
@@ -269,6 +288,7 @@ export class Store {
       snapshots: {},
       activeSeatId: null,
       addingPlayer: false,
+      confirmingStop: false,
       acknowledged: [],
       selection: [],
     });

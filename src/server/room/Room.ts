@@ -510,10 +510,42 @@ export class Room {
     this.enterPhase("reveal", null, null);
   }
 
+  /**
+   * The host's emergency stop, offered during the night alone.
+   *
+   * The night is the one phase the table cannot repair by talking: every
+   * player but the called role has their eyes shut, so only the narrator can
+   * see that a phone has died mid-turn, that the wrong role answered, or that
+   * somebody walked in. This abandons the round rather than trying to rewind
+   * it - cards already looked at cannot be unlooked, so the only honest
+   * recovery is a fresh deal.
+   */
+  stopRound(playerId: PlayerId): CommandError {
+    if (!this.isHost(playerId)) return fail("not_host", "Only the host can stop the round.");
+    if (this.phase !== "night") return fail("invalid_action", "The night is not running.");
+
+    log.info(`${this.code}: round ${this.round + 1} stopped by the host`);
+    // Spoken before the phase changes, because the table is sitting in the
+    // dark waiting for the next role: somebody has to tell them to look up.
+    this.narrate("phase.stopped");
+    this.resetToLobby();
+    return ok();
+  }
+
   playAgain(playerId: PlayerId): CommandError {
     if (!this.isHost(playerId)) return fail("not_host", "Only the host can restart.");
     if (this.phase !== "reveal") return fail("invalid_action", "The round is not over yet.");
 
+    this.resetToLobby();
+    return ok();
+  }
+
+  /**
+   * Drops the round in progress and reopens the lobby, keeping the table, the
+   * deck and the settings. Reached both from a round played to its end and
+   * from one the host stopped part-way; neither leaves anything to resume.
+   */
+  private resetToLobby(): void {
     this.round += 1;
     this.night = null;
     this.result = null;
@@ -521,7 +553,6 @@ export class Room {
     for (const player of this.seats) player.ready = false;
     this.autoFitDeck();
     this.enterPhase("lobby", null, null);
-    return ok();
   }
 
   /* ---------------------------------------------------------------------- */

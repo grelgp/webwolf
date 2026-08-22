@@ -422,6 +422,9 @@ export class ConnectionHub {
       case "end_discussion":
         error = room.endDiscussion(playerId);
         break;
+      case "stop_round":
+        error = room.stopRound(playerId);
+        break;
       case "cast_vote":
         error = room.castVote(playerId, message.targetId);
         break;

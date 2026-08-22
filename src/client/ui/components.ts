@@ -130,6 +130,28 @@ export function ghostButton(label: string, onClick: () => void): HTMLElement {
   });
 }
 
+/**
+ * The destructive counterpart of `primaryButton`.
+ *
+ * `quiet` gives the outlined form, which is what the night screens use: a
+ * solid red block would light up a phone lying face up on a dark table, next
+ * to players who are supposed to have their eyes shut. The filled form is for
+ * a dialog the host has already opened on purpose.
+ */
+export function dangerButton(
+  label: string,
+  onClick: () => void,
+  options: { quiet?: boolean; class?: string } = {},
+): HTMLElement {
+  const variant = options.quiet ? "btn--danger-quiet" : "btn--danger";
+  return h("button", {
+    class: `btn ${variant} ${options.class ?? ""}`.trim(),
+    text: label,
+    attrs: { type: "button" },
+    onClick,
+  });
+}
+
 export interface StepperOptions {
   label: string;
   /** Already formatted for display, e.g. "5 min". */
@@ -299,5 +321,62 @@ export function handover(options: HandoverOptions): HTMLElement {
       ),
     ),
     options.footer,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Confirmation dialog                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface ConfirmOptions {
+  title: string;
+  /** One line saying what will actually happen, in plain words. */
+  body: string;
+  /** Optional second line, for what the app cannot do on the host's behalf. */
+  caution?: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+/**
+ * A modal over the current screen, for the one control that cannot be undone.
+ *
+ * It covers rather than replaces, so the host keeps the countdown and the
+ * step behind it in view while deciding. Tapping outside cancels, which is the
+ * gesture people already expect and the safe outcome either way - the caller
+ * owns the flag, so an accidental dismissal costs one tap.
+ *
+ * Nothing private ever goes in here. The dialog belongs to the host device,
+ * which sits in the middle of the table where anyone might glance at it.
+ */
+export function confirmDialog(options: ConfirmOptions): HTMLElement {
+  return h(
+    "div",
+    {
+      class: "scrim",
+      // Only the backdrop itself cancels; a tap that lands on the panel has
+      // bubbled up from a control inside it and must not close anything.
+      onClick: (event) => {
+        if (event.target === event.currentTarget) options.onCancel();
+      },
+    },
+    h(
+      "div",
+      {
+        class: "dialog",
+        attrs: { role: "dialog", "aria-modal": "true", "aria-label": options.title },
+      },
+      h("h2", { class: "dialog__title", text: options.title }),
+      h("p", { class: "dialog__body", text: options.body }),
+      options.caution && h("p", { class: "dialog__caution", text: options.caution }),
+      h(
+        "div",
+        { class: "dialog__actions" },
+        dangerButton(options.confirmLabel, options.onConfirm, { class: "btn--block" }),
+        ghostButton(options.cancelLabel, options.onCancel),
+      ),
+    ),
   );
 }

@@ -315,6 +315,25 @@ button {
   color: var(--text-muted);
 }
 
+/* Filled: inside a dialog the host has already opened on purpose. */
+.btn--danger {
+  background: var(--danger);
+  color: var(--accent-contrast);
+  font-size: 1.05rem;
+}
+
+/*
+ * Outlined: the same action offered on a night screen. A phone lying face up
+ * on a dark table must not gain a glowing red block, so this one reads as a
+ * warning without lighting the room.
+ */
+.btn--danger-quiet {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: transparent;
+  color: var(--danger);
+  opacity: 0.85;
+}
+
 .btn--block {
   width: 100%;
 }
@@ -960,6 +979,69 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.75;
+}
+
+/* Confirmation dialog ----------------------------------------------------- */
+
+/*
+ * Fixed to the viewport rather than to `.app`, so it covers the whole screen
+ * however far the page underneath has been scrolled. Nothing here is private:
+ * the host phone sits in the middle of the table.
+ */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--pad);
+  background: rgba(0, 0, 0, 0.72);
+  animation: scrim-in 120ms ease-out;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 22rem;
+  padding: var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* Never transparent: the screen behind it must not be legible through it. */
+  background: var(--bg-elevated);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.8);
+  text-align: center;
+}
+
+.dialog__title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.dialog__body {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.dialog__caution {
+  color: var(--warning);
+  font-size: 0.85rem;
+}
+
+.dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* Per-seat progress on a shared phone, e.g. who has looked at their card. */

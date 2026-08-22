@@ -142,6 +142,15 @@ const actions: Actions = {
     sendAsHost({ t: "end_discussion" });
   },
 
+  stopRound() {
+    // Cut whatever the narrator is halfway through. Utterances queue rather
+    // than interrupt, so without this "ouvrez les yeux" would wait behind the
+    // long line that just called a role - with the table still asleep.
+    narrator.cancel();
+    store.setConfirmingStop(false);
+    sendAsHost({ t: "stop_round" });
+  },
+
   castVote(seat, targetId: PlayerId) {
     sendAs(seat, { t: "cast_vote", targetId });
   },
