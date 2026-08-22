@@ -97,7 +97,14 @@ export class Room {
   private hostIdValue: PlayerId | null = null;
 
   settings: RoomSettings = { ...DEFAULT_SETTINGS };
-  deck: RoleId[] = [];
+
+  /**
+   * The deck is the host's to shape. It is seeded once, here, and from then on
+   * only `setDeck` touches it - a deck that no longer fits the table is shown
+   * to the host as a warning rather than silently rewritten, so a seat opening
+   * or closing never throws away a hand-tuned list.
+   */
+  deck: RoleId[] = suggestDeck(MIN_PLAYERS);
   phase: Phase = "lobby";
   round = 0;
 
@@ -206,10 +213,6 @@ export class Room {
     };
     this.seats.push(player);
     if (this.hostIdValue === null) this.hostIdValue = player.id;
-
-    // Keep the deck sensible as the table grows, unless the host has already
-    // hand-tuned it into something still valid.
-    this.autoFitDeck();
     this.callbacks.onChange(this);
     return { player };
   }
@@ -243,7 +246,6 @@ export class Room {
     if (index === -1) return;
     this.seats.splice(index, 1);
     if (this.hostIdValue === playerId) this.hostIdValue = this.seats[0]?.id ?? null;
-    this.autoFitDeck();
     this.callbacks.onChange(this);
   }
 
@@ -316,20 +318,6 @@ export class Room {
 
     this.callbacks.onChange(this);
     return ok();
-  }
-
-  /**
-   * Replaces the deck with a default one whenever the current deck no longer
-   * fits the table. Hand-tuned but still-valid decks are left alone.
-   */
-  private autoFitDeck(): void {
-    if (this.seats.length < MIN_PLAYERS) {
-      // Below the minimum there is no valid deck; show the host a plausible one.
-      this.deck = suggestDeck(Math.max(this.seats.length, MIN_PLAYERS));
-      return;
-    }
-    if (validateDeck(this.deck, this.seats.length).ok) return;
-    this.deck = suggestDeck(this.seats.length);
   }
 
   private requireHostInLobby(playerId: PlayerId): CommandError {
@@ -551,7 +539,6 @@ export class Room {
     this.result = null;
     this.votes.clear();
     for (const player of this.seats) player.ready = false;
-    this.autoFitDeck();
     this.enterPhase("lobby", null, null);
   }
 
