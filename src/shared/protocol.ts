@@ -62,6 +62,8 @@ export type SeatedMessage =
   | { t: "night_skip" }
   /** Host only. Ends the discussion timer early. */
   | { t: "end_discussion" }
+  /** Host only, during the night. Abandons the round and reopens the lobby. */
+  | { t: "stop_round" }
   | { t: "cast_vote"; targetId: PlayerId }
   /** Host only. Returns the room to the lobby, keeping players and settings. */
   | { t: "play_again" };
@@ -240,7 +242,7 @@ export interface RoundResult {
 export interface ClientState {
   code: string;
   phase: Phase;
-  /** Increments on every "play again"; used to reset per-round client UI. */
+  /** Increments on every return to the lobby; resets per-round client UI. */
   round: number;
   /** Server clock at send time, so the client can offset its countdowns. */
   serverNow: number;

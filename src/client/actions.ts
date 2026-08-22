@@ -40,6 +40,13 @@ export interface Actions {
   skipNight(seat: PlayerId): void;
 
   endDiscussion(): void;
+
+  /**
+   * Host only, during the night: abandons the round and reopens the lobby.
+   * The screen asks for confirmation first - see `renderNight`.
+   */
+  stopRound(): void;
+
   castVote(seat: PlayerId, targetId: PlayerId): void;
   playAgain(): void;
 

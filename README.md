@@ -59,6 +59,12 @@ code for them.
 
 **Play again** keeps the room, the players and the settings.
 
+If the night goes wrong — a phone dies mid-turn, the wrong person answers, somebody walks
+in — the host's screen carries **Arrêter la manche**, behind a confirmation. It abandons
+the round and sends the whole table back to the lobby for a fresh deal, and the narrator
+announces it, since everyone else still has their eyes shut. It is offered during the
+night only: every other phase can be sorted out by talking.
+
 ### Two players, one phone
 
 Short of devices? In the lobby, tap **Ajouter un 2e joueur** and give them a nickname. They

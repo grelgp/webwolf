@@ -442,6 +442,86 @@ test("Only players sharing a phone are marked as sharing one", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+console.log("\n== Stopping a round ==");
+
+/** A room mid-night, driven through the real phase machine. */
+function roomInTheNight() {
+  const narrated = [];
+  const room = new Room("TEST", {
+    onChange() {},
+    onNarrate(_room, key) {
+      narrated.push(key);
+    },
+  });
+  const host = room.join("Alice", "device-1").player;
+  const bruno = room.join("Bruno", "device-2").player;
+  room.join("Chloe", "device-3");
+
+  assert.equal(room.startGame(host.id), null, "the auto-fitted deck is playable");
+  // The reveal ends the moment every seat acknowledges, which opens the night.
+  for (const player of room.players) room.markReady(player.id);
+  assert.equal(room.phase, "night");
+
+  return { room, host, bruno, narrated };
+}
+
+test("The host stops the night and the table lands back in the lobby", () => {
+  const { room, host, narrated } = roomInTheNight();
+  const deck = room.deck.slice();
+
+  assert.equal(room.stopRound(host.id), null);
+  assert.equal(room.phase, "lobby");
+  assert.equal(room.night, null, "the deal is discarded, not paused");
+  assert.equal(room.deadline, null, "and the night timer with it");
+  assert.equal(room.playerCount, 3, "everybody keeps their seat");
+  assert.deepEqual(room.deck, deck, "and the deck they were about to play");
+  assert.ok(
+    narrated.includes("phase.stopped"),
+    "the table has its eyes shut and must be told to open them",
+  );
+  room.dispose();
+});
+
+test("Only the host can stop a round", () => {
+  const { room, bruno } = roomInTheNight();
+
+  assert.equal(room.stopRound(bruno.id)?.code, "not_host");
+  assert.equal(room.phase, "night", "a player cannot end everyone else's night");
+  room.dispose();
+});
+
+test("Stopping is offered during the night alone", () => {
+  const room = emptyRoom();
+  const host = room.join("Alice", "device-1").player;
+  room.join("Bruno", "device-2");
+  room.join("Chloe", "device-3");
+
+  assert.equal(room.stopRound(host.id)?.code, "invalid_action", "not from the lobby");
+
+  assert.equal(room.startGame(host.id), null);
+  assert.equal(room.phase, "role_reveal");
+  assert.equal(room.stopRound(host.id)?.code, "invalid_action", "nor from the reveal");
+  assert.equal(room.phase, "role_reveal", "and the round carries on either way");
+  room.dispose();
+});
+
+test("A stopped round can be dealt again straight away", () => {
+  const { room, host } = roomInTheNight();
+  const before = room.round;
+
+  assert.equal(room.stopRound(host.id), null);
+  assert.equal(room.round, before + 1, "the aborted round is closed, not resumed");
+  assert.equal(room.startGame(host.id), null, "the lobby is fully usable again");
+  assert.equal(room.phase, "role_reveal");
+  assert.ok(room.night, "a fresh deal, not the one that was abandoned");
+  assert.ok(
+    room.players.every((player) => !player.ready),
+    "nobody carries an acknowledgement over from the stopped round",
+  );
+  room.dispose();
+});
+
+/* -------------------------------------------------------------------------- */
 console.log("\n== Voting ==");
 
 test("The most-voted player dies", () => {

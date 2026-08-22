@@ -133,6 +133,33 @@ Because steps run strictly one after another and each mutates in place, ordering
 free: the Seer (wake order 20) genuinely reads the pre-theft table, because the Robber (30)
 has not run yet. There is no need to model "time" anywhere.
 
+### The host can stop it
+
+`stop_round` is the only way out of the night that is not the clock, and it is
+offered during the night alone. Every other phase can be repaired by talking: the day
+and the vote have everyone looking at their own screen, and the lobby has not started
+yet. The night does not — every player but the called role has their eyes shut, so the
+narrator is the only person who can see that a phone died mid-turn, that the wrong role
+answered, or that somebody walked in.
+
+It **abandons** the round rather than rewinding it. Half a night is not a resumable
+state: cards already looked at cannot be unlooked, and a Robber who has taken somebody's
+card would have to give it back to a table that now knows about it. So `stopRound` runs
+the same `resetToLobby` as `playAgain`, and the next round is a fresh deal.
+
+Two details are load-bearing:
+
+- the phase change is narrated (`phase.stopped`) **before** it happens, because the
+  table is sitting in the dark waiting for the next role and has to be told to look up;
+- the host device cancels its own in-flight utterance first. Utterances queue rather
+  than interrupt, so "ouvrez les yeux" would otherwise wait behind the long line that
+  just called a role.
+
+On the client the button carries a confirmation, and the flag for it lives in the store
+rather than in the night screen — that screen is rebuilt on every snapshot, and one
+arrives at every night step, so a dialog owned by the DOM would vanish under the host
+mid-decision.
+
 ### Selection is declarative
 
 A role does not describe its UI. It declares a list of `SelectionGroup`s, and the player

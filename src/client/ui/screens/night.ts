@@ -16,6 +16,12 @@
  * accumulate until they satisfy one group, then submit on their own - the Seer
  * reads a player in one tap, two center cards in two.
  *
+ * The host's phone carries one extra control on both of them: a stop button
+ * that abandons the round. The night is the one phase the table cannot repair
+ * by talking, since everyone but the called role has their eyes shut, so the
+ * narrator is the only person who can see that something has gone wrong. It is
+ * guarded by a confirmation, because that phone is lying face up on a table.
+ *
  * A phone shared by two players needs no hand-over gate here, unlike the
  * reveal and the vote. Only the called role has its eyes open: the other seat
  * is either asleep, and so sees nothing to leak, or holds the same role - a
@@ -28,7 +34,17 @@ import type { ClientState, NightTurnView, RevealedCard } from "../../../shared/p
 import type { Actions } from "../../actions.js";
 import { ROLE_NAMES, ROLE_NIGHT_PROMPTS, UI } from "../../i18n/fr.js";
 import type { Store } from "../../store.js";
-import { banner, countdown, ghostButton, header, stage, tile, tileGrid } from "../components.js";
+import {
+  banner,
+  confirmDialog,
+  countdown,
+  dangerButton,
+  ghostButton,
+  header,
+  stage,
+  tile,
+  tileGrid,
+} from "../components.js";
 import { h } from "../dom.js";
 
 export function renderNight(store: Store, actions: Actions): HTMLElement {
@@ -44,14 +60,50 @@ export function renderNight(store: Store, actions: Actions): HTMLElement {
   const seat = awake.find((candidate) => !candidate.private?.turn?.resolved) ?? awake[0] ?? state;
 
   const turn = seat.private?.turn;
-  return turn ? renderTurn(store, actions, seat, turn) : renderSleeping(store, seat);
+  return turn ? renderTurn(store, actions, seat, turn) : renderSleeping(store, actions, seat);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The host's stop control, on both night screens                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The button that abandons the round, and null on every phone but the host's.
+ *
+ * Quiet on purpose. It sits on a screen the whole table can see, in a phase
+ * where the device is meant to stay dark, and it is never the thing the host
+ * came to the screen for - so it is outlined rather than filled, and it opens
+ * a confirmation instead of acting.
+ */
+function stopControl(store: Store): HTMLElement | null {
+  if (!store.isHost) return null;
+  return dangerButton(UI.stopRound, () => store.setConfirmingStop(true), {
+    quiet: true,
+    class: "btn--block",
+  });
+}
+
+/** The confirmation over either night screen, while the host is deciding. */
+function stopConfirmation(store: Store, actions: Actions): HTMLElement | null {
+  if (!store.isHost || !store.state.confirmingStop) return null;
+  return confirmDialog({
+    title: UI.stopConfirmTitle,
+    body: UI.stopConfirmBody,
+    // The app cannot do this part: it can change the phase on every phone at
+    // once, but the players are not looking at theirs.
+    caution: UI.stopConfirmCaution,
+    confirmLabel: UI.stopConfirmYes,
+    cancelLabel: UI.stopConfirmNo,
+    onConfirm: () => actions.stopRound(),
+    onCancel: () => store.setConfirmingStop(false),
+  });
 }
 
 /* -------------------------------------------------------------------------- */
 /* Everyone whose role is not being called                                    */
 /* -------------------------------------------------------------------------- */
 
-function renderSleeping(store: Store, seat: ClientState): HTMLElement {
+function renderSleeping(store: Store, actions: Actions, seat: ClientState): HTMLElement {
   // Absent for the first few seconds of the night: nobody has been called yet,
   // and the table is still putting its phones down.
   const night = seat.night;
@@ -77,6 +129,9 @@ function renderSleeping(store: Store, seat: ClientState): HTMLElement {
       }),
       countdown(store),
     ),
+
+    h("div", { class: "actions" }, stopControl(store)),
+    stopConfirmation(store, actions),
   );
 }
 
@@ -175,13 +230,14 @@ function renderTurn(
       turn.resolved && banner(resolvedMessage(turn), "info"),
     ),
 
-    // Nothing left to offer once the action is spent.
-    !turn.resolved &&
-      h(
-        "div",
-        { class: "actions" },
-        ghostButton(UI.nightSkip, () => actions.skipNight(state.youId)),
-      ),
+    h(
+      "div",
+      { class: "actions" },
+      // Nothing left to offer once the action is spent.
+      !turn.resolved && ghostButton(UI.nightSkip, () => actions.skipNight(state.youId)),
+      stopControl(store),
+    ),
+    stopConfirmation(store, actions),
   );
 }
 
